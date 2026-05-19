@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+venv/
+.env
+
+# Models & Data (if you want to ignore them later, but keep them for now)
+# *.csv
+# *.keras
+# *.task
+# *.pkl
+
+# OS
+.DS_Store
+Thumbs.db
