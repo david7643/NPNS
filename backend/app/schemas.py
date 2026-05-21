@@ -1,5 +1,6 @@
 """DrowsyGuard Pydantic 스키마 정의."""
 
+from datetime import datetime
 from pydantic import BaseModel
 
 
@@ -44,3 +45,21 @@ class ContactUpdate(BaseModel):
     """비상 연락처 수정."""
 
     emergency_contact: str
+
+# ── Session 관련 스키마 ──
+
+class SessionResponse(BaseModel):
+    """운전 세션 응답."""
+
+    id: int
+    user_id: int
+    started_at: datetime
+    ended_at: datetime | None
+
+    model_config = {"from_attributes": True}
+
+
+class SessionEndRequest(BaseModel):
+    """운전 세션 종료 요청."""
+
+    session_id: int
