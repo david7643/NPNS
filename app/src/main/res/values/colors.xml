@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 배경 계열 -->
+    <color name="bg_primary">#121318</color>
+    <color name="bg_secondary">#1C1E26</color>
+    <color name="bg_card">#23262F</color>
+    <color name="bg_card_elevated">#2A2D38</color>
+
+    <!-- 텍스트 계열 -->
+    <color name="text_primary">#F0F2FF</color>
+    <color name="text_secondary">#9DA3B4</color>
+    <color name="text_hint">#555A6E</color>
+
+    <!-- 포인트 컬러 (파란색 계열 - 평상시) -->
+    <color name="accent_primary">#4D8EFF</color>
+    <color name="accent_secondary">#1A3A6E</color>
+    <color name="accent_light">#7AABFF</color>
+
+    <!-- 경보 컬러 (빨간색 - 경보 전용) -->
+    <color name="alert_red">#FF3B3B</color>
+    <color name="alert_red_bg">#3D0A0A</color>
+    <color name="alert_red_light">#FF6B6B</color>
+
+    <!-- 상태 컬러 -->
+    <color name="status_safe">#2ECC71</color>
+    <color name="status_safe_bg">#0A2E1A</color>
+    <color name="status_warn">#F5A623</color>
+    <color name="status_warn_bg">#2E1F00</color>
+    <color name="status_danger">#FF3B3B</color>
+    <color name="status_danger_bg">#3D0A0A</color>
+
+    <!-- 수면 단계별 컬러 -->
+    <color name="stage_1">#F5A623</color>
+    <color name="stage_1_bg">#2E1F00</color>
+    <color name="stage_2">#FF7043</color>
+    <color name="stage_2_bg">#2E1000</color>
+    <color name="stage_3">#FF3B3B</color>
+    <color name="stage_3_bg">#3D0A0A</color>
+
+    <!-- 구분선 / 테두리 -->
+    <color name="divider">#2A2D38</color>
+    <color name="border">#32364A</color>
+
+    <!-- 네비게이션 바 -->
+    <color name="nav_bg">#1C1E26</color>
+    <color name="nav_active">#4D8EFF</color>
+    <color name="nav_inactive">#555A6E</color>
+
+</resources>
