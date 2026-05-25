@@ -1,0 +1,46 @@
+[
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\fragment_sleep_data.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_sleep_data.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\item_contact_card.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_contact_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\fragment_home.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_home.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\item_sleep_event_card.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_sleep_event_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\activity_main.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\activity_main.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\activity_alert_overlay.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\activity_alert_overlay.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\fragment_contact.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_contact.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\dialog_contact.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\dialog_contact.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\item_event_card.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_event_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-mergeDebugResources-52:\\layout\\fragment_massager.xml",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_massager.xml"
+    },
+    {
+        "merged": "com.jsm.nsnd.app-mergeDebugResources-52:/layout/fragment_massager.xml",
+        "source": "com.jsm.nsnd.app-main-55:/layout/fragment_massager.xml"
+    }
+]

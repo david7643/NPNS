@@ -1,0 +1,198 @@
+[
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-hdpi_ic_launcher.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-hdpi\\ic_launcher.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_safe.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_safe.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\anim_rotate_ring.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\anim\\rotate_ring.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_activity_alert_overlay.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\activity_alert_overlay.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_ic_launcher_background.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\ic_launcher_background.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_ic_warning_ring.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\ic_warning_ring.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-anydpi_ic_launcher.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-anydpi\\ic_launcher.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xxxhdpi_ic_launcher.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xxxhdpi\\ic_launcher.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_dot_white_active.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_dot_white_active.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_item_event_card.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_event_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xhdpi_ic_launcher.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xhdpi\\ic_launcher.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_fragment_massager.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_massager.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_danger.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_danger.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xhdpi_ic_launcher_round.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xhdpi\\ic_launcher_round.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_stage3.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_stage3.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_warn.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_warn.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\menu_bottom_nav_menu.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\menu\\bottom_nav_menu.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\color_bottom_nav_selector.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\color\\bottom_nav_selector.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_progress_fill.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_progress_fill.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-anydpi_ic_launcher_round.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-anydpi\\ic_launcher_round.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-mdpi_ic_launcher.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-mdpi\\ic_launcher.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_item_contact_card.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_contact_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\xml_data_extraction_rules.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\xml\\data_extraction_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_avatar.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_avatar.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_spinner.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_spinner.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-hdpi_ic_launcher_round.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-hdpi\\ic_launcher_round.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_stage2.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_stage2.xml"
+    },
+    {
+        "merged": "com.jsm.nsnd.app-debug-53:/layout_fragment_massager.xml.flat",
+        "source": "com.jsm.nsnd.app-main-55:/layout/fragment_massager.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_dot_active.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_dot_active.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\anim_flash_bg.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\anim\\flash_bg.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_item_sleep_event_card.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\item_sleep_event_card.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_fragment_sleep_data.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_sleep_data.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xxhdpi_ic_launcher_round.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xxhdpi\\ic_launcher_round.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xxhdpi_ic_launcher.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xxhdpi\\ic_launcher.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_icon_btn.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_icon_btn.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_dialog_contact.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\dialog_contact.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_fragment_contact.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_contact.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_dot_white_inactive.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_dot_white_inactive.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\xml_backup_rules.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\xml\\backup_rules.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_fragment_home.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\fragment_home.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_progress_track.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_progress_track.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\color_color.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\color\\color.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_dot_inactive.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_dot_inactive.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_ic_launcher_foreground.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\ic_launcher_foreground.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_theme_selector.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_theme_selector.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-xxxhdpi_ic_launcher_round.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-xxxhdpi\\ic_launcher_round.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\mipmap-mdpi_ic_launcher_round.webp.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\mipmap-mdpi\\ic_launcher_round.webp"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\drawable_bg_badge_stage1.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\drawable\\bg_badge_stage1.xml"
+    },
+    {
+        "merged": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-debug-53:\\layout_activity_main.xml.flat",
+        "source": "C:\\Users\\home\\.gradle\\daemon\\8.13\\com.jsm.nsnd.app-main-55:\\layout\\activity_main.xml"
+    }
+]

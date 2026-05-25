@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:ns1="http://schemas.android.com/tools">
+    <string-array name="contact_messages">
+        <item>운전 중 졸음이 감지되었습니다. 확인 부탁드립니다.</item>
+        <item>졸음 운전 경고! 잠시 휴식을 권장합니다.</item>
+        <item>NSND 시스템: 운전자의 졸음이 감지되었습니다. 연락 바랍니다.</item>
+        <item>위험 상황 감지. 운전자 상태를 확인해 주세요.</item>
+    </string-array>
+    <color name="accent_light">#7AABFF</color>
+    <color name="accent_primary">#4D8EFF</color>
+    <color name="accent_secondary">#1A3A6E</color>
+    <color name="alert_red">#FF3B3B</color>
+    <color name="alert_red_bg">#3D0A0A</color>
+    <color name="alert_red_light">#FF6B6B</color>
+    <color name="bg_card">#23262F</color>
+    <color name="bg_card_elevated">#2A2D38</color>
+    <color name="bg_primary">#121318</color>
+    <color name="bg_secondary">#1C1E26</color>
+    <color name="black">#FF000000</color>
+    <color name="border">#32364A</color>
+    <color name="divider">#2A2D38</color>
+    <color name="nav_active">#4D8EFF</color>
+    <color name="nav_bg">#1C1E26</color>
+    <color name="nav_inactive">#555A6E</color>
+    <color name="stage_1">#F5A623</color>
+    <color name="stage_1_bg">#2E1F00</color>
+    <color name="stage_2">#FF7043</color>
+    <color name="stage_2_bg">#2E1000</color>
+    <color name="stage_3">#FF3B3B</color>
+    <color name="stage_3_bg">#3D0A0A</color>
+    <color name="status_danger">#FF3B3B</color>
+    <color name="status_danger_bg">#3D0A0A</color>
+    <color name="status_safe">#2ECC71</color>
+    <color name="status_safe_bg">#0A2E1A</color>
+    <color name="status_warn">#F5A623</color>
+    <color name="status_warn_bg">#2E1F00</color>
+    <color name="text_hint">#555A6E</color>
+    <color name="text_primary">#F0F2FF</color>
+    <color name="text_secondary">#9DA3B4</color>
+    <color name="white">#FFFFFFFF</color>
+    <dimen name="step_dot_margin">4dp</dimen>
+    <dimen name="step_dot_size">8dp</dimen>
+    <string name="alert_dismiss">확인</string>
+    <string name="alert_stage_1">1단계 경보</string>
+    <string name="alert_stage_2">2단계 경보</string>
+    <string name="alert_stage_3">3단계 경보 — 긴급 연락 발송 중</string>
+    <string name="alert_title">졸음 감지!</string>
+    <string name="app_name">NSND</string>
+    <string name="cancel">취소</string>
+    <string name="confirm">확인</string>
+    <string name="contact_add">연락처 추가</string>
+    <string name="contact_cancel">취소</string>
+    <string name="contact_delete">삭제</string>
+    <string name="contact_edit">편집</string>
+    <string name="contact_empty">연락처를 추가해주세요\n3단계 졸음 감지 시 자동으로 연락이 발송됩니다</string>
+    <string name="contact_message_hint">보낼 메시지 선택</string>
+    <string name="contact_min_warning">최소 1개의 연락처가 필요합니다</string>
+    <string name="contact_name_hint">이름</string>
+    <string name="contact_phone_hint">연락처</string>
+    <string name="contact_save">저장</string>
+    <string name="contact_subtitle">3단계 감지 시 자동으로 SMS를 발송합니다</string>
+    <string name="contact_title">연락 보내기 설정</string>
+    <string name="delete">삭제</string>
+    <string name="edit">편집</string>
+    <string name="error_network">네트워크 오류가 발생했습니다</string>
+    <string name="error_unknown">알 수 없는 오류가 발생했습니다</string>
+    <string name="home_co2_label">실내 CO₂ 농도</string>
+    <string name="home_co2_unit">ppm</string>
+    <string name="home_connected">연결됨</string>
+    <string name="home_connecting">연결 중…</string>
+    <string name="home_disconnected">연결 안됨</string>
+    <string name="home_event_empty">감지된 이벤트가 없습니다</string>
+    <string name="home_event_label">감지 이벤트</string>
+    <string name="home_sleep_normal">정상</string>
+    <string name="home_sleep_stage_label">현재 수면 단계</string>
+    <string name="home_sleep_stage_unit">단계</string>
+    <string name="home_start_btn">작동 시작</string>
+    <string name="home_stop_btn">작동 중지</string>
+    <string name="home_ventilation_danger">즉시 환기하세요</string>
+    <string name="home_ventilation_good">환기 상태 양호</string>
+    <string name="home_ventilation_warn">환기를 권장합니다</string>
+    <string name="login_btn">로그인</string>
+    <string name="login_id_hint">아이디</string>
+    <string name="login_password_hint">비밀번호</string>
+    <string name="login_subtitle">졸음 운전 방지 시스템</string>
+    <string name="login_title">NSND</string>
+    <string name="login_to_signup">계정이 없으신가요? 회원가입</string>
+    <string name="massager_save">저장</string>
+    <string name="massager_saved">저장되었습니다</string>
+    <string name="massager_stage_unit">단계</string>
+    <string name="massager_subtitle">저주파 마사지기 단계를 설정하세요</string>
+    <string name="massager_title">마사지기 강도</string>
+    <string name="nav_contact">연락설정</string>
+    <string name="nav_home">홈</string>
+    <string name="nav_massager">마사지기</string>
+    <string name="nav_sleep">수면데이터</string>
+    <string name="save">저장</string>
+    <string name="sidebar_logout">로그아웃</string>
+    <string name="sidebar_logout_confirm">로그아웃 하시겠습니까?</string>
+    <string name="sidebar_theme_dark">다크</string>
+    <string name="sidebar_theme_label">화면 설정</string>
+    <string name="sidebar_theme_light">라이트</string>
+    <string name="sidebar_theme_system">시스템</string>
+    <string name="sidebar_withdraw">회원탈퇴</string>
+    <string name="sidebar_withdraw_confirm">정말 탈퇴하시겠습니까?\n모든 데이터가 삭제됩니다.</string>
+    <string name="signup_btn">가입하기</string>
+    <string name="signup_id_hint">아이디</string>
+    <string name="signup_name_hint">이름</string>
+    <string name="signup_password_confirm_hint">비밀번호 확인</string>
+    <string name="signup_password_hint">비밀번호</string>
+    <string name="signup_subtitle">NSND 계정을 만들어 주세요</string>
+    <string name="signup_title">회원가입</string>
+    <string name="signup_to_login">이미 계정이 있으신가요? 로그인</string>
+    <string name="sleep_chart_label">시간별 수면 단계</string>
+    <string name="sleep_event_empty">감지된 수면 데이터가 없습니다</string>
+    <string name="sleep_stage_1">1단계</string>
+    <string name="sleep_stage_2">2단계</string>
+    <string name="sleep_stage_3">3단계</string>
+    <string name="sleep_title">수면 데이터</string>
+    <style name="Base.Theme.NSND" parent="Theme.Material3.DayNight.NoActionBar">
+
+        
+        <item name="android:windowBackground">@color/bg_primary</item>
+        <item name="colorSurface">@color/bg_secondary</item>
+
+        
+        <item name="colorPrimary">@color/accent_primary</item>
+        <item name="colorPrimaryVariant">@color/accent_secondary</item>
+        <item name="colorOnPrimary">@color/text_primary</item>
+        <item name="colorSecondary">@color/accent_light</item>
+        <item name="colorOnSecondary">@color/bg_primary</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+
+        
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+
+        
+        <item name="android:statusBarColor">@color/bg_primary</item>
+        <item name="android:navigationBarColor">@color/nav_bg</item>
+        <item name="android:windowLightStatusBar" ns1:targetApi="m">false</item>
+
+    </style>
+    <style name="ShapeAppearance.NSND.Button" parent="ShapeAppearance.Material3.Corner.Full">
+        <item name="cornerSize">12dp</item>
+    </style>
+    <style name="Theme.NSND" parent="Base.Theme.NSND"/>
+    <style name="Theme.NSND.Alert" parent="Base.Theme.NSND">
+        <item name="android:windowBackground">@color/alert_red</item>
+        <item name="android:statusBarColor">@color/alert_red</item>
+        <item name="android:navigationBarColor">@color/alert_red</item>
+    </style>
+    <style name="Widget.NSND.Button" parent="Widget.Material3.Button">
+        <item name="shapeAppearance">@style/ShapeAppearance.NSND.Button</item>
+        <item name="android:textColor">@color/text_primary</item>
+    </style>
+    <style name="Widget.NSND.ThemeChip" parent="Widget.Material3.Button.TextButton">
+        <item name="android:textSize">12sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+        <item name="cornerRadius">8dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+    </style>
+</resources>
