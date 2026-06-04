@@ -38,7 +38,7 @@ class DrivingSession(Base):
 
 
 class DetectionLog(Base):
-    """졸음 감지 로그 테이블 — dev_workflow.md 스키마 기반."""
+    """졸음 감지 로그 테이블."""
 
     __tablename__ = "detection_logs"
 
@@ -49,5 +49,7 @@ class DetectionLog(Base):
     ear_value: Mapped[float] = mapped_column(Float, nullable=False)
     pred_score: Mapped[float] = mapped_column(Float, nullable=False)
     drowsy_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    latitude: Mapped[float | None] = mapped_column(Float, nullable=True)   # 위도
+    longitude: Mapped[float | None] = mapped_column(Float, nullable=True)  # 경도
 
     session: Mapped["DrivingSession"] = relationship(back_populates="logs")

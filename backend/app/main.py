@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import init_db
-from app.routers import auth, sessions
+from app.routers import auth, detection, report, session
 
 
 @asynccontextmanager
@@ -23,7 +23,9 @@ app = FastAPI(
 )
 
 app.include_router(auth.router)
-app.include_router(sessions.router)
+app.include_router(session.router)
+app.include_router(detection.router)
+app.include_router(report.router)
 
 
 @app.get("/health")
