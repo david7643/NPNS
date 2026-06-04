@@ -53,7 +53,7 @@ async def end_session(
     if session.ended_at is not None:
         raise HTTPException(status_code=400, detail="이미 종료된 세션입니다.")
 
-    session.ended_at = datetime.now(timezone.utc)
+    session.ended_at = datetime.utcnow()
     await db.commit()
     await db.refresh(session)
     return SessionEndResponse(session_id=session.id, started_at=session.started_at, ended_at=session.ended_at)
