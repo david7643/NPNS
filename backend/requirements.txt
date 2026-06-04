@@ -17,3 +17,10 @@ python-dotenv==1.1.0
 # Validation
 pydantic[email-validator]==2.11.4
 pydantic-settings==2.9.1
+
+# AI / Detection
+tensorflow
+opencv-python
+mediapipe
+joblib
+numpy

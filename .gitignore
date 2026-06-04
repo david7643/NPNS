@@ -6,12 +6,23 @@ env/
 venv/
 .env
 
-# Models & Data (if you want to ignore them later, but keep them for now)
-# *.csv
-# *.keras
-# *.task
-# *.pkl
+# Models & Data
+*.csv
+*.keras
+*.task
+*.pkl
+*.h5
+!backend/ai_models/
+
+
+# Datasets (Training images)
+model_training/image_dataset/
+*.jpg
+*.jpeg
+*.png
+*.gif
 
 # OS
 .DS_Store
 Thumbs.db
+

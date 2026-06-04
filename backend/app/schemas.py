@@ -63,3 +63,27 @@ class SessionEndRequest(BaseModel):
     """운전 세션 종료 요청."""
 
     session_id: int
+
+
+# ── Detection 관련 스키마 ──
+
+
+class DetectionStartRequest(BaseModel):
+    """감지 시작/종료 요청."""
+
+    session_id: int
+
+
+class DetectionStartResponse(BaseModel):
+    """감지 시작 응답."""
+
+    session_id: int
+    status: str
+    message: str
+
+
+class DetectionStatusResponse(BaseModel):
+    """감지 상태 조회 응답."""
+
+    session_id: int
+    is_running: bool

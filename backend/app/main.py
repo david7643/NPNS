@@ -5,13 +5,15 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import init_db
-from app.routers import auth, sessions
+from app.detection_service import load_models
+from app.routers import auth, detection, sessions
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """서버 시작 시 DB 테이블 생성."""
+    """서버 시작 시 DB 테이블 생성 및 AI 모델 로드."""
     await init_db()
+    load_models()
     yield
 
 
@@ -24,6 +26,7 @@ app = FastAPI(
 
 app.include_router(auth.router)
 app.include_router(sessions.router)
+app.include_router(detection.router)
 
 
 @app.get("/health")
