@@ -35,3 +35,9 @@ app.include_router(contacts.router)
 async def health_check():
     """서버 상태 확인용 헬스체크 엔드포인트."""
     return {"status": "ok"}
+
+
+if __name__ == "__main__":
+    import uvicorn
+    print("Starting DrowsyGuard Backend Server directly from main.py...")
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
