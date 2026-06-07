@@ -24,3 +24,4 @@ opencv-python
 mediapipe
 joblib
 numpy
+scikit-learn

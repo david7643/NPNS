@@ -210,3 +210,33 @@ class ReportDetailResponse(BaseModel):
     most_dangerous_time: str | None
     chart_data: list[ChartDataItem]
     events: list[DrowsyEventItem]
+
+
+# ── Contact 관련 스키마 ──
+
+
+class ContactCreate(BaseModel):
+    """긴급 연락처 생성 요청."""
+
+    name: str
+    phone: str
+    message: str
+
+
+class SavedContactUpdate(BaseModel):
+    """긴급 연락처 수정 요청."""
+
+    name: str
+    phone: str
+    message: str
+
+
+class ContactResponse(BaseModel):
+    """긴급 연락처 응답."""
+
+    id: int
+    name: str
+    phone: str
+    message: str
+
+    model_config = {"from_attributes": True}

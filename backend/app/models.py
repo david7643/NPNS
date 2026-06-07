@@ -21,6 +21,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     sessions: Mapped[list["DrivingSession"]] = relationship(back_populates="user")
+    contacts: Mapped[list["Contact"]] = relationship()
 
 
 class DrivingSession(Base):
@@ -53,3 +54,16 @@ class DetectionLog(Base):
     longitude: Mapped[float | None] = mapped_column(Float, nullable=True)  # 경도
 
     session: Mapped["DrivingSession"] = relationship(back_populates="logs")
+
+
+class Contact(Base):
+    """사용자별 긴급 연락처 테이블."""
+
+    __tablename__ = "contacts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    phone: Mapped[str] = mapped_column(String(30), nullable=False)
+    message: Mapped[str] = mapped_column(String(500), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
