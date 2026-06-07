@@ -81,6 +81,12 @@ class SessionResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class SessionEndRequest(BaseModel):
+    """세션 종료 요청."""
+
+    session_id: int
+
+
 # ── Detection 관련 스키마 ──
 
 
@@ -111,6 +117,27 @@ class DetectionLogResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DetectionStartRequest(BaseModel):
+    """감지 시작/종료 요청 (팀원 추가)."""
+
+    session_id: int
+
+
+class DetectionStartResponse(BaseModel):
+    """감지 시작 응답 (팀원 추가)."""
+
+    session_id: int
+    status: str
+    message: str
+
+
+class DetectionStatusResponse(BaseModel):
+    """감지 상태 조회 응답 (팀원 추가)."""
+
+    session_id: int
+    is_running: bool
+
+
 # ── Report 관련 스키마 ──
 
 
@@ -138,14 +165,14 @@ class ReportSummaryResponse(BaseModel):
     ended_at: datetime | None
     duration_minutes: int | None
     safety_score: int
-    grade: str  # safe / caution / danger
+    grade: str
     total_drowsy_count: int
     level1_count: int
     level2_count: int
     level3_count: int
     most_dangerous_time: str | None
     chart_data: list[ChartDataItem]
-    events: list[DrowsyEventItem]  # 감지 시간 + 위치 + 단계 목록
+    events: list[DrowsyEventItem]
 
 
 class ReportHistoryItem(BaseModel):
@@ -182,4 +209,4 @@ class ReportDetailResponse(BaseModel):
     level3_count: int
     most_dangerous_time: str | None
     chart_data: list[ChartDataItem]
-    events: list[DrowsyEventItem]  # 감지 시간 + 위치 + 단계 목록
+    events: list[DrowsyEventItem]
