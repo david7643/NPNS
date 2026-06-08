@@ -59,3 +59,12 @@ async def update_contacts(
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """현재 로그인된 사용자 계정 삭제."""
+    await db.delete(current_user)
+    await db.commit()
