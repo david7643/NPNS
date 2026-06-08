@@ -1,7 +1,7 @@
 """인증 관련 API 라우터."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import create_access_token, hash_password, verify_password
@@ -59,3 +59,22 @@ async def update_contacts(
     await db.commit()
     await db.refresh(current_user)
     return current_user
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT, summary="회원 탈퇴")
+async def delete_me(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """현재 로그인된 계정 탈퇴 및 관련 데이터 전체 삭제."""
+    from app.models import Contact, DetectionLog, DrivingSession
+
+    # 관련된 데이터 (로그, 세션, 연락처) 모두 삭제
+    await db.execute(delete(DetectionLog).where(DetectionLog.user_id == current_user.id))
+    await db.execute(delete(DrivingSession).where(DrivingSession.user_id == current_user.id))
+    await db.execute(delete(Contact).where(Contact.user_id == current_user.id))
+    
+    # 마지막으로 유저 계정 삭제
+    await db.delete(current_user)
+    await db.commit()
+

@@ -1,6 +1,7 @@
 """졸음 감지 서비스 — 카메라 제어 + 모델 추론 + 3단계 판정."""
 
 import asyncio
+import logging
 import os
 import threading
 import time
@@ -39,6 +40,8 @@ LEVEL_MESSAGES = {
     3: "졸음 3단계 — 위험",
 }
 
+logger = logging.getLogger(__name__)
+
 AI_MODELS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ai_models")
 
 
@@ -70,11 +73,43 @@ def _calc_ear(landmarks, eye_indices, w, h):
     return (v1 + v2) / (2.0 * horiz)
 
 
+async def _save_log_to_db(
+    user_id: int,
+    session_id: int,
+    ear_value: float,
+    pred_score: float,
+    drowsy_level: int,
+    latitude: float | None = None,
+    longitude: float | None = None,
+):
+    """감지 로그를 DB에 비동기로 저장."""
+    from app.database import async_session
+    from app.models import DetectionLog
+
+    try:
+        async with async_session() as db:
+            log = DetectionLog(
+                user_id=user_id,
+                session_id=session_id,
+                ear_value=ear_value,
+                pred_score=pred_score,
+                drowsy_level=drowsy_level,
+                latitude=latitude,
+                longitude=longitude,
+            )
+            db.add(log)
+            await db.commit()
+            logger.info("졸음 로그 저장 완료: session=%d, level=%d", session_id, drowsy_level)
+    except Exception:
+        logger.exception("졸음 로그 저장 실패: session=%d", session_id)
+
+
 class DetectionSession:
     """하나의 감지 세션 — 카메라 루프를 스레드로 실행."""
 
-    def __init__(self, session_id: int, loop: asyncio.AbstractEventLoop):
+    def __init__(self, session_id: int, user_id: int, loop: asyncio.AbstractEventLoop):
         self.session_id = session_id
+        self._user_id = user_id
         self._loop = loop
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=30)
         self._running = False
@@ -133,6 +168,7 @@ class DetectionSession:
 
         ear_buffer = deque(maxlen=WINDOW_SIZE)
         counters = [0, 0, 0]
+        prev_level = 0
         detect_start = time.time()
 
         try:
@@ -182,6 +218,20 @@ class DetectionSession:
                                 drowsy_level = i + 1
                                 break
 
+                # 졸음 단계가 전환되었을 때 DB에 로그 저장
+                if drowsy_level > 0 and drowsy_level != prev_level:
+                    asyncio.run_coroutine_threadsafe(
+                        _save_log_to_db(
+                            user_id=self._user_id,
+                            session_id=self.session_id,
+                            ear_value=round(ear_value, 4),
+                            pred_score=round(pred_score, 4),
+                            drowsy_level=drowsy_level,
+                        ),
+                        self._loop,
+                    )
+                prev_level = drowsy_level
+
                 self._put_result({
                     "pred_score": round(pred_score, 4),
                     "drowsy_level": drowsy_level,
@@ -199,13 +249,13 @@ _active_session: DetectionSession | None = None
 
 
 def start_detection(
-    session_id: int, loop: asyncio.AbstractEventLoop
+    session_id: int, user_id: int, loop: asyncio.AbstractEventLoop
 ) -> DetectionSession:
     """감지 시작."""
     global _active_session
     if _active_session and _active_session.is_running:
         raise RuntimeError("이미 감지가 실행 중입니다")
-    _active_session = DetectionSession(session_id, loop)
+    _active_session = DetectionSession(session_id, user_id, loop)
     _active_session.start()
     return _active_session
 

@@ -37,7 +37,7 @@ async def start(
 
     loop = asyncio.get_running_loop()
     try:
-        start_detection(body.session_id, loop)
+        start_detection(body.session_id, current_user.id, loop)
     except RuntimeError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
