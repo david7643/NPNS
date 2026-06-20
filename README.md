@@ -55,7 +55,8 @@ drowsy_detection/backend/
 ## 서버 실행 방법
 
 ```powershell
-cd drowsy_detection\backend
+#cd drowsy_detection\backend
+cd backend
 .venv\Scripts\activate
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```

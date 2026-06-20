@@ -1,6 +1,8 @@
 """리포트 관련 API 라우터."""
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import datetime, time, timedelta
+
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,6 +11,7 @@ from app.dependencies import get_current_user
 from app.models import DetectionLog, DrivingSession, User
 from app.schemas import (
     DrowsyEventItem,
+    ReportByDateResponse,
     ReportDetailResponse,
     ReportHistoryItem,
     ReportHistoryResponse,
@@ -49,17 +52,33 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
         delta = session.ended_at - session.started_at
         duration_minutes = int(delta.total_seconds() / 60)
 
-    hour_counts: dict[int, int] = {}
+    # 시간대별 단계별 집계
+    hour_level_counts: dict[int, dict[int, int]] = {}
+    hour_max_level: dict[int, int] = {}
     for log in logs:
         if log.drowsy_level > 0:
             hour = log.timestamp.hour
-            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            if hour not in hour_level_counts:
+                hour_level_counts[hour] = {1: 0, 2: 0, 3: 0}
+            hour_level_counts[hour][log.drowsy_level] += 1
+            # 해당 시간대 최고 단계 갱신
+            hour_max_level[hour] = max(hour_max_level.get(hour, 0), log.drowsy_level)
 
-    chart_data = [{"hour": h, "count": c} for h, c in sorted(hour_counts.items())]
+    chart_data = [
+        {
+            "hour": h,
+            "count": sum(counts.values()),
+            "level1": counts[1],
+            "level2": counts[2],
+            "level3": counts[3],
+            "max_level": hour_max_level.get(h, 0),
+        }
+        for h, counts in sorted(hour_level_counts.items())
+    ]
 
     most_dangerous_time = None
-    if hour_counts:
-        peak_hour = max(hour_counts, key=lambda h: hour_counts[h])
+    if hour_level_counts:
+        peak_hour = max(hour_level_counts, key=lambda h: sum(hour_level_counts[h].values()))
         most_dangerous_time = f"{peak_hour:02d}:00~{(peak_hour + 1) % 24:02d}:00"
 
     events = [
@@ -165,3 +184,95 @@ async def get_report_detail(
     logs = logs_result.scalars().all()
 
     return ReportDetailResponse(**build_report_data(session, logs))
+
+@router.get("/by-date", response_model=ReportByDateResponse, summary="특정 날짜 리포트 (세션 합산)")
+async def get_report_by_date(
+    date: str = Query(..., description="조회할 날짜 (YYYY-MM-DD)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    try:
+        target_date = datetime.strptime(date, "%Y-%m-%d").date()
+    except ValueError:
+        raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)")
+
+    day_start = datetime.combine(target_date, time.min)
+    day_end = datetime.combine(target_date, time.max)
+
+    result = await db.execute(
+        select(DrivingSession).where(
+            DrivingSession.user_id == current_user.id,
+            DrivingSession.started_at >= day_start,
+            DrivingSession.started_at <= day_end,
+        ).order_by(DrivingSession.started_at)
+    )
+    sessions = result.scalars().all()
+
+    if not sessions:
+        raise HTTPException(status_code=404, detail="해당 날짜의 운전 기록이 없습니다.")
+
+    session_ids = [s.id for s in sessions]
+    logs_result = await db.execute(
+        select(DetectionLog).where(DetectionLog.session_id.in_(session_ids))
+    )
+    logs = logs_result.scalars().all()
+
+    score = calc_safety_score(logs)
+    grade = get_grade(score)
+
+    level_counts = {1: 0, 2: 0, 3: 0}
+    for log in logs:
+        if log.drowsy_level in level_counts:
+            level_counts[log.drowsy_level] += 1
+
+    hour_counts: dict[int, int] = {}
+    hour_level_counts: dict[int, dict[int, int]] = {}
+    for log in logs:
+        if log.drowsy_level > 0:
+            hour = log.timestamp.hour
+            hour_counts[hour] = hour_counts.get(hour, 0) + 1
+            hour_level_counts.setdefault(hour, {1: 0, 2: 0, 3: 0})
+            hour_level_counts[hour][log.drowsy_level] += 1
+
+    chart_data = []
+    for h in sorted(hour_counts.keys()):
+        levels = hour_level_counts[h]
+        max_level = max((lvl for lvl, cnt in levels.items() if cnt > 0), default=0)
+        chart_data.append({
+            "hour": h,
+            "count": hour_counts[h],
+            "level1": levels[1],
+            "level2": levels[2],
+            "level3": levels[3],
+            "max_level": max_level,
+        })
+
+    most_dangerous_time = None
+    if hour_counts:
+        peak_hour = max(hour_counts, key=lambda h: hour_counts[h])
+        most_dangerous_time = f"{peak_hour:02d}:00~{(peak_hour + 1) % 24:02d}:00"
+
+    events = [
+        DrowsyEventItem(
+            timestamp=log.timestamp,
+            drowsy_level=log.drowsy_level,
+            latitude=log.latitude,
+            longitude=log.longitude,
+        )
+        for log in logs
+        if log.drowsy_level > 0
+    ]
+
+    return ReportByDateResponse(
+        date=date,
+        session_count=len(sessions),
+        safety_score=score,
+        grade=grade,
+        total_drowsy_count=sum(level_counts.values()),
+        level1_count=level_counts[1],
+        level2_count=level_counts[2],
+        level3_count=level_counts[3],
+        most_dangerous_time=most_dangerous_time,
+        chart_data=chart_data,
+        events=events,
+    )

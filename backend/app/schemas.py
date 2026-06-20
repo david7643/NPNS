@@ -194,6 +194,22 @@ class ReportHistoryResponse(BaseModel):
     sessions: list[ReportHistoryItem]
 
 
+class ReportByDateResponse(BaseModel):
+    """특정 날짜 리포트 응답 (해당 날짜의 모든 세션 합산)."""
+
+    date: str
+    session_count: int
+    safety_score: int
+    grade: str
+    total_drowsy_count: int
+    level1_count: int
+    level2_count: int
+    level3_count: int
+    most_dangerous_time: str | None
+    chart_data: list[ChartDataItem]
+    events: list[DrowsyEventItem]
+
+
 class ReportDetailResponse(BaseModel):
     """세션 상세 리포트 응답."""
 
