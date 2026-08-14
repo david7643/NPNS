@@ -22,6 +22,9 @@ model_training/image_dataset/
 *.png
 *.gif
 
+# Image Dataset (too large for git, ~23GB)
+model_training/image_dataset/
+
 # OS
 .DS_Store
 Thumbs.db
