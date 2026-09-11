@@ -53,7 +53,19 @@ async def end_session(
     if session is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="세션을 찾을 수 없습니다")
     if session.ended_at is not None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="이미 종료된 세션입니다")
+        return SessionEndResponse(
+            session_id=session.id,
+            started_at=session.started_at,
+            ended_at=session.ended_at,
+        )
+
+    # API 호출 순서가 일부 실패해도 세션 종료가 카메라 자원을 함께 정리하도록 보장합니다.
+    from app.detection_service import get_active_session, stop_detection
+    active = get_active_session()
+    if active is not None and active.session_id == session.id:
+        if active.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="다른 사용자의 감지 세션입니다")
+        stop_detection()
 
     session.ended_at = datetime.now(timezone.utc)
     await db.commit()

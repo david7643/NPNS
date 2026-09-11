@@ -9,7 +9,7 @@ aiosqlite==0.21.0
 # Authentication
 python-jose[cryptography]==3.4.0
 passlib[bcrypt]==1.7.4
-bcrypt==4.3.0
+bcrypt==4.0.1
 
 # Environment variables
 python-dotenv==1.1.0

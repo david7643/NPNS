@@ -5,7 +5,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from app.database import init_db
-from app.detection_service import load_models
+from app.detection_service import (
+    camera_available,
+    get_active_session,
+    load_models,
+    models_ready,
+)
 from app.routers import auth, contacts, detection, report, sessions
 
 
@@ -34,7 +39,16 @@ app.include_router(contacts.router)
 @app.get("/health")
 async def health_check():
     """서버 상태 확인용 헬스체크 엔드포인트."""
-    return {"status": "ok"}
+    active = get_active_session()
+    model_status = models_ready()
+    camera_status = camera_available()
+    return {
+        "status": "ok" if model_status and camera_status else "not_ready",
+        "models_ready": model_status,
+        "camera_available": camera_status,
+        "detection_active": bool(active and active.is_running),
+        "active_session_id": active.session_id if active and active.is_running else None,
+    }
 
 
 if __name__ == "__main__":

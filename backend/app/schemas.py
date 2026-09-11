@@ -40,6 +40,7 @@ class LoginRequest(BaseModel):
 
     username: str
     password: str
+    device_id: str = Field(..., min_length=3, max_length=200)
 
 
 class ContactUpdate(BaseModel):
@@ -234,17 +235,17 @@ class ReportDetailResponse(BaseModel):
 class ContactCreate(BaseModel):
     """긴급 연락처 생성 요청."""
 
-    name: str
-    phone: str
-    message: str
+    name: str = Field(..., min_length=1, max_length=100)
+    phone: str = Field(..., min_length=8, max_length=30)
+    message: str = Field(..., min_length=1, max_length=500)
 
 
 class SavedContactUpdate(BaseModel):
     """긴급 연락처 수정 요청."""
 
-    name: str
-    phone: str
-    message: str
+    name: str = Field(..., min_length=1, max_length=100)
+    phone: str = Field(..., min_length=8, max_length=30)
+    message: str = Field(..., min_length=1, max_length=500)
 
 
 class ContactResponse(BaseModel):

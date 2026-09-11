@@ -24,6 +24,19 @@ class User(Base):
     contacts: Mapped[list["Contact"]] = relationship()
 
 
+class LoginSession(Base):
+    """사용자별 단일 활성 로그인 세션."""
+
+    __tablename__ = "login_sessions"
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    device_id: Mapped[str] = mapped_column(String(200), nullable=False)
+    token_id: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    issued_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class DrivingSession(Base):
     """운전 세션 테이블."""
 

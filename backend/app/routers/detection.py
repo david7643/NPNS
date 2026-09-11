@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisco
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_db
-from app.dependencies import get_current_user
+from app.database import async_session, get_db
+from app.dependencies import get_current_user, resolve_current_user
 from app.detection_service import get_active_session, start_detection, stop_detection
 from app.models import DrivingSession, User
 from app.schemas import DetectionStartRequest, DetectionStartResponse, DetectionStatusResponse
@@ -63,6 +63,11 @@ async def stop(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="해당 세션의 감지가 실행 중이 아닙니다",
         )
+    if active.user_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="다른 사용자의 감지 세션은 종료할 수 없습니다",
+        )
     stop_detection()
     return {"status": "stopped", "message": "졸음 감지가 종료되었습니다"}
 
@@ -70,14 +75,27 @@ async def stop(
 @router.websocket("/ws/{session_id}")
 async def detection_ws(websocket: WebSocket, session_id: int):
     """실시간 감지 결과를 WebSocket으로 스트리밍."""
-    await websocket.accept()
+    authorization = websocket.headers.get("authorization", "")
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        await websocket.close(code=4001, reason="로그인이 필요합니다")
+        return
+
+    try:
+        async with async_session() as db:
+            current_user = await resolve_current_user(token, db)
+    except HTTPException:
+        await websocket.close(code=4001, reason="로그인이 만료되었습니다")
+        return
 
     active = get_active_session()
-    if active is None or active.session_id != session_id:
+    if active is None or active.session_id != session_id or active.user_id != current_user.id:
         await websocket.close(
             code=4004, reason="해당 세션의 감지가 실행 중이 아닙니다"
         )
         return
+
+    await websocket.accept()
 
     try:
         while active.is_running:
@@ -97,5 +115,10 @@ async def detection_status(
 ):
     """현재 감지 상태 조회."""
     active = get_active_session()
-    is_running = active is not None and active.session_id == session_id and active.is_running
+    is_running = (
+        active is not None
+        and active.session_id == session_id
+        and active.user_id == current_user.id
+        and active.is_running
+    )
     return DetectionStatusResponse(session_id=session_id, is_running=is_running)

@@ -121,6 +121,10 @@ class DetectionSession:
         return self._running
 
     @property
+    def user_id(self) -> int:
+        return self._user_id
+
+    @property
     def queue(self) -> asyncio.Queue:
         return self._queue
 
@@ -271,3 +275,18 @@ def stop_detection():
 def get_active_session() -> DetectionSession | None:
     """현재 활성 세션 반환."""
     return _active_session
+
+
+def models_ready() -> bool:
+    return _lstm_model is not None and _face_model_buffer is not None
+
+
+def camera_available() -> bool:
+    active = get_active_session()
+    if active is not None and active.is_running:
+        return True
+    camera = cv2.VideoCapture(0)
+    try:
+        return camera.isOpened()
+    finally:
+        camera.release()
