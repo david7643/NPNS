@@ -130,6 +130,9 @@ class DetectionStartResponse(BaseModel):
     session_id: int
     status: str
     message: str
+    calibration_required_seconds: float | None = None
+    detection_code_version: str | None = None
+    model_release_id: str | None = None
 
 
 class DetectionStatusResponse(BaseModel):
@@ -147,6 +150,10 @@ class ChartDataItem(BaseModel):
 
     hour: int
     count: int
+    level1: int = 0
+    level2: int = 0
+    level3: int = 0
+    max_level: int = 0
 
 
 class DrowsyEventItem(BaseModel):
@@ -238,6 +245,7 @@ class ContactCreate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     phone: str = Field(..., min_length=8, max_length=30)
     message: str = Field(..., min_length=1, max_length=500)
+    model_config = {"str_strip_whitespace": True}
 
 
 class SavedContactUpdate(BaseModel):
@@ -246,6 +254,7 @@ class SavedContactUpdate(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
     phone: str = Field(..., min_length=8, max_length=30)
     message: str = Field(..., min_length=1, max_length=500)
+    model_config = {"str_strip_whitespace": True}
 
 
 class ContactResponse(BaseModel):

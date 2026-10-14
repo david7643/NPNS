@@ -1,0 +1,19 @@
+{
+  "release_id": "personal-ear-v1",
+  "source_candidate": "20261013_195253_465521",
+  "normalization": "personal_baseline",
+  "decision_threshold": 0.02,
+  "sample_rate_hz": 30.0,
+  "window_size": 30,
+  "window_seconds": 0.9666666666666667,
+  "seed": 42,
+  "epochs_run": 23,
+  "validated_recordings": [
+    "session_10_20261013_200820.csv",
+    "session_11_20261013_213448.csv"
+  ],
+  "asset_sha256": {
+    "best_drowsy_model.keras": "2bd20b4e4f32751490aec02280dd8b2d54c7a7e97dd554862c3bbac73773e1f7",
+    "ear_scaler.pkl": "479caa2ffa66aa271705b457c0bc30dc2b9f825c3956de4eacbafa97d97786ab"
+  }
+}

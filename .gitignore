@@ -22,6 +22,12 @@ model_training/image_dataset/
 *.png
 *.gif
 
+# Local diagnostic results
+backend/diagnostics/
+backend/ai_models/candidates/
+!backend/ai_models/released/personal-ear-v1/best_drowsy_model.keras
+!backend/ai_models/released/personal-ear-v1/ear_scaler.pkl
+
 # OS
 .DS_Store
 Thumbs.db

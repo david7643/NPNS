@@ -16,6 +16,7 @@ import numpy as np
 import csv
 import time
 import os
+import uuid
 
 # 모델 파일 경로
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -51,7 +52,7 @@ def calc_ear(landmarks, eye_indices, w, h):
     return (vertical_1 + vertical_2) / (2.0 * horizontal)
 
 
-def collect_data(label, duration_sec=60, filename="ear_data.csv"):
+def collect_data(label, duration_sec=60, filename="ear_sessions.csv"):
     """
     EAR 데이터를 수집하여 CSV 파일에 저장
 
@@ -83,10 +84,15 @@ def collect_data(label, duration_sec=60, filename="ear_data.csv"):
 
     start_time = time.time()
     frame_count = 0
-    state_text = "NORMAL (눈 뜨세요)" if label == 0 else "DROWSY (천천히 눈 감으세요)"
+    session_id = uuid.uuid4().hex
+    current_label = 0 if label == 0 else None
+    print("촬영 창 선택 후 0: 정상 / 1: 오래 눈 감기 / u: 저장 제외 / q: 종료")
 
     with open(filename, "a", newline="") as f:
-        writer = csv.writer(f)
+        fieldnames = ["session_id", "timestamp", "ear", "label"]
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if f.tell() == 0:
+            writer.writeheader()
 
         while time.time() - start_time < duration_sec:
             ret, frame = cap.read()
@@ -110,12 +116,19 @@ def collect_data(label, duration_sec=60, filename="ear_data.csv"):
                 right_ear = calc_ear(lm, RIGHT_EYE, w, h)
                 avg_ear = (left_ear + right_ear) / 2.0
 
-                # CSV에 저장
-                writer.writerow([round(avg_ear, 4), label])
-                frame_count += 1
+                # 눈을 뜨는 구간까지 일괄 졸음 라벨로 저장하지 않는다.
+                if current_label is not None and np.isfinite(avg_ear) and 0 < avg_ear < 1:
+                    writer.writerow({
+                        "session_id": session_id,
+                        "timestamp": round(elapsed, 4),
+                        "ear": round(avg_ear, 4),
+                        "label": current_label,
+                    })
+                    frame_count += 1
 
                 # 화면에 정보 표시
-                color = (0, 255, 0) if label == 0 else (0, 0, 255)
+                color = (0, 255, 0) if current_label == 0 else (0, 0, 255)
+                state_text = {0: "NORMAL", 1: "CLOSED / DROWSY", None: "UNLABELED"}[current_label]
                 cv2.putText(frame, f"EAR: {avg_ear:.3f}", (10, 30),
                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
                 cv2.putText(frame, f"State: {state_text}", (10, 60),
@@ -128,7 +141,14 @@ def collect_data(label, duration_sec=60, filename="ear_data.csv"):
                        (10, h - 20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
             cv2.imshow("EAR Data Collection", frame)
 
-            if cv2.waitKey(1) & 0xFF == ord('q'):
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('0'):
+                current_label = 0
+            elif key == ord('1'):
+                current_label = 1
+            elif key == ord('u'):
+                current_label = None
+            elif key == ord('q'):
                 print("사용자에 의해 중단됨")
                 break
 
@@ -139,7 +159,7 @@ def collect_data(label, duration_sec=60, filename="ear_data.csv"):
 
 
 if __name__ == "__main__":
-    data_file = os.path.join(SCRIPT_DIR, "ear_data.csv")
+    data_file = os.path.join(SCRIPT_DIR, "ear_sessions.csv")
 
     # 모델 파일 확인
     if not os.path.exists(MODEL_PATH):
@@ -175,6 +195,8 @@ if __name__ == "__main__":
     print("  → 천천히 눈을 감았다 뜨기를 반복하세요")
     print("  → 눈을 반쯤 감은 상태도 포함하세요")
     print("  → 실제 졸린 것처럼 연기하세요")
+    print("  → 촬영 창에서 눈 감기 시작 시 1, 다시 뜰 때 0을 누르세요")
+    print("  → 이 단계는 키를 누르기 전까지 데이터를 저장하지 않습니다")
     input("  → 준비되면 Enter를 누르세요...")
     print("  3초 후 시작합니다...")
     time.sleep(3)

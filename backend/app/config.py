@@ -1,6 +1,7 @@
 """DrowsyGuard 백엔드 설정 모듈."""
 
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
 
@@ -12,8 +13,11 @@ class Settings(BaseSettings):
     SECRET_KEY: str = "dev-secret-key-do-not-use-in-production"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 1440  # 24시간
     DATABASE_URL: str = "sqlite+aiosqlite:///./drowsyguard.db"
+    # 상대 경로는 app/ 기준이 아닌 backend/ 기준으로 해석한다.
+    DROWSINESS_MODEL_DIR: str | None = None
+    DROWSINESS_CAMERA_INDEX: int = 0
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": str(Path(__file__).resolve().parents[1] / ".env")}
 
 
 @lru_cache

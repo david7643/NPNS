@@ -1,9 +1,9 @@
 """리포트 관련 API 라우터."""
 
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -21,6 +21,15 @@ from app.schemas import (
 router = APIRouter(prefix="/report", tags=["report"])
 
 DEDUCTIONS = {1: 2, 2: 5, 3: 15}
+
+
+def utc_datetime(value):
+    return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+def date_bounds(target_date, utc_offset_minutes):
+    start = datetime.combine(target_date, time.min) - timedelta(minutes=utc_offset_minutes)
+    return start, start + timedelta(days=1)
 
 
 def calc_safety_score(logs: list[DetectionLog]) -> int:
@@ -83,7 +92,7 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
 
     events = [
         DrowsyEventItem(
-            timestamp=log.timestamp,
+            timestamp=utc_datetime(log.timestamp),
             drowsy_level=log.drowsy_level,
             latitude=log.latitude,
             longitude=log.longitude,
@@ -94,8 +103,8 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
 
     return {
         "session_id": session.id,
-        "started_at": session.started_at,
-        "ended_at": session.ended_at,
+        "started_at": utc_datetime(session.started_at),
+        "ended_at": utc_datetime(session.ended_at),
         "duration_minutes": duration_minutes,
         "safety_score": score,
         "grade": grade,
@@ -188,6 +197,7 @@ async def get_report_detail(
 @router.get("/by-date", response_model=ReportByDateResponse, summary="특정 날짜 리포트 (세션 합산)")
 async def get_report_by_date(
     date: str = Query(..., description="조회할 날짜 (YYYY-MM-DD)"),
+    utc_offset_minutes: int = Query(0, ge=-720, le=840, description="UTC 기준 조회 날짜의 시차(분), 기본 UTC"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -196,14 +206,13 @@ async def get_report_by_date(
     except ValueError:
         raise HTTPException(status_code=400, detail="날짜 형식이 올바르지 않습니다 (YYYY-MM-DD)")
 
-    day_start = datetime.combine(target_date, time.min)
-    day_end = datetime.combine(target_date, time.max)
+    day_start, day_end = date_bounds(target_date, utc_offset_minutes)
 
     result = await db.execute(
         select(DrivingSession).where(
             DrivingSession.user_id == current_user.id,
-            DrivingSession.started_at >= day_start,
-            DrivingSession.started_at <= day_end,
+            DrivingSession.started_at < day_end,
+            or_(DrivingSession.ended_at.is_(None), DrivingSession.ended_at > day_start),
         ).order_by(DrivingSession.started_at)
     )
     sessions = result.scalars().all()
@@ -213,7 +222,12 @@ async def get_report_by_date(
 
     session_ids = [s.id for s in sessions]
     logs_result = await db.execute(
-        select(DetectionLog).where(DetectionLog.session_id.in_(session_ids))
+        select(DetectionLog).where(
+            DetectionLog.session_id.in_(session_ids),
+            DetectionLog.user_id == current_user.id,
+            DetectionLog.timestamp >= day_start,
+            DetectionLog.timestamp < day_end,
+        ).order_by(DetectionLog.timestamp)
     )
     logs = logs_result.scalars().all()
 
@@ -229,7 +243,7 @@ async def get_report_by_date(
     hour_level_counts: dict[int, dict[int, int]] = {}
     for log in logs:
         if log.drowsy_level > 0:
-            hour = log.timestamp.hour
+            hour = (log.timestamp + timedelta(minutes=utc_offset_minutes)).hour
             hour_counts[hour] = hour_counts.get(hour, 0) + 1
             hour_level_counts.setdefault(hour, {1: 0, 2: 0, 3: 0})
             hour_level_counts[hour][log.drowsy_level] += 1
@@ -254,7 +268,7 @@ async def get_report_by_date(
 
     events = [
         DrowsyEventItem(
-            timestamp=log.timestamp,
+            timestamp=utc_datetime(log.timestamp),
             drowsy_level=log.drowsy_level,
             latitude=log.latitude,
             longitude=log.longitude,

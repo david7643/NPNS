@@ -9,7 +9,7 @@ from app.auth import decode_access_token
 from app.database import get_db
 from app.models import LoginSession, User
 
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 async def resolve_current_user(token: str, db: AsyncSession) -> User:
@@ -23,7 +23,11 @@ async def resolve_current_user(token: str, db: AsyncSession) -> User:
     if user_id is None or token_id is None:
         raise HTTPException(status_code=401, detail="다시 로그인해주세요")
 
-    result = await db.execute(select(User).where(User.id == int(user_id)))
+    try:
+        numeric_user_id = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=401, detail="다시 로그인해주세요")
+    result = await db.execute(select(User).where(User.id == numeric_user_id))
     user = result.scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="사용자를 찾을 수 없습니다")
@@ -43,8 +47,10 @@ async def resolve_current_user(token: str, db: AsyncSession) -> User:
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
     db: AsyncSession = Depends(get_db),
 ) -> User:
     """JWT 토큰에서 현재 사용자를 추출하는 의존성."""
+    if credentials is None:
+        raise HTTPException(status_code=401, detail="로그인이 필요합니다")
     return await resolve_current_user(credentials.credentials, db)

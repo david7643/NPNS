@@ -1,6 +1,8 @@
 """JWT 및 비밀번호 유틸리티."""
 
 from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
 
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -18,6 +20,16 @@ def hash_password(password: str) -> str:
 
 def verify_password(plain: str, hashed: str) -> bool:
     return pwd_context.verify(plain, hashed)
+
+
+def storage_account_key(user) -> str:
+    """Opaque identity without changing existing DBs; bcrypt salt distinguishes reused IDs.
+
+    Stable across logins. A future password/key rotation needs an explicit cache migration.
+    Neither the password hash nor signing key is included in the token.
+    """
+    identity = f"nsnd-account-v1:{user.id}:{user.hashed_password}".encode("utf-8")
+    return hmac.new(settings.SECRET_KEY.encode("utf-8"), identity, hashlib.sha256).hexdigest()
 
 
 def create_access_token(data: dict) -> str:

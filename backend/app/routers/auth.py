@@ -5,7 +5,7 @@ from sqlalchemy import select, delete
 from uuid import uuid4
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import create_access_token, hash_password, verify_password
+from app.auth import create_access_token, hash_password, verify_password, storage_account_key
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import LoginSession, User
@@ -71,7 +71,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
         login_session.token_id = token_id
     await db.commit()
 
-    token = create_access_token({"sub": str(user.id), "sid": token_id})
+    token = create_access_token({"sub": str(user.id), "sid": token_id,
+                                 "account_key": storage_account_key(user)})
     return Token(access_token=token)
 
 
