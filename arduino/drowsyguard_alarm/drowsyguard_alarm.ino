@@ -7,6 +7,7 @@
 //    3초 동안 명령이 없으면 서버가 꺼진 것으로 보고 경보를 끈다.
 // 2) 창문: CO2가 2000ppm 이상이면 서보가 열림 위치로 이동,
 //    1000ppm 아래로 내려가면 닫힘 위치로 이동 (서버 없이도 동작)
+//    다 움직인 뒤에는 서보 신호를 끊어 떨림·소음을 막는다.
 // 3) CO2 값은 "CO2:850" 형식으로 서버에 보낸다.
 
 #include <SoftwareSerial.h>
@@ -24,6 +25,7 @@ const int WINDOW_OPEN_PPM  = 2000; // 이 이상이면 창문 열기 (졸음 유
 const int WINDOW_CLOSE_PPM = 1000; // 이 아래로 내려가면 창문 닫기
 const int WINDOW_CLOSED_ANGLE = 0;
 const int WINDOW_OPEN_ANGLE   = 180;
+const unsigned long SERVO_MOVE_MS = 800;  // 끝까지 도는 시간. 다 못 돌면 늘리기
 
 // ----- 경보 -----
 const int BUZZER_HZ = 400;                        // 낮을수록 작게 들림
@@ -42,6 +44,8 @@ bool ledState = false;
 unsigned long lastRequest = 0;
 unsigned long lastBlink   = 0;
 unsigned long lastCommand = 0;
+unsigned long servoDetachAt = 0;
+bool servoMoving = false;
 
 char cmdBuf[8];
 byte cmdLen = 0;
@@ -53,8 +57,15 @@ void setup() {
   pinMode(LED_PIN, OUTPUT);
   pinMode(BUZZER_PIN, OUTPUT);
 
+  moveWindow(WINDOW_CLOSED_ANGLE);
+}
+
+// 서보를 잠깐 연결해서 움직이고, SERVO_MOVE_MS 뒤에 신호를 끊는다.
+void moveWindow(int angle) {
   windowServo.attach(SERVO_PIN);
-  windowServo.write(WINDOW_CLOSED_ANGLE);
+  windowServo.write(angle);
+  servoMoving = true;
+  servoDetachAt = millis() + SERVO_MOVE_MS;
 }
 
 void setAlarm(bool on) {
@@ -113,10 +124,10 @@ void updateWindow() {
   if (co2ppm <= 0) return;  // 아직 측정값 없음
   if (!windowOpen && co2ppm >= WINDOW_OPEN_PPM) {
     windowOpen = true;
-    windowServo.write(WINDOW_OPEN_ANGLE);
+    moveWindow(WINDOW_OPEN_ANGLE);
   } else if (windowOpen && co2ppm < WINDOW_CLOSE_PPM) {
     windowOpen = false;
-    windowServo.write(WINDOW_CLOSED_ANGLE);
+    moveWindow(WINDOW_CLOSED_ANGLE);
   }
 }
 
@@ -132,6 +143,11 @@ void loop() {
   }
   readCO2();
   updateWindow();
+
+  if (servoMoving && (long)(now - servoDetachAt) >= 0) {
+    windowServo.detach();
+    servoMoving = false;
+  }
 
   if (alarmOn && now - lastBlink >= 300) {
     lastBlink = now;
