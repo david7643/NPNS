@@ -16,6 +16,7 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import joblib
+from app.arduino_bridge import get_arduino
 from app.config import get_settings
 
 from app.ear_sequence import (
@@ -848,6 +849,9 @@ class DetectionSession:
                 while self._running:
                     self._apply_alarm_ack_requests(detector.processor)
                     _, result = detector.read()
+                    arduino = get_arduino()
+                    arduino.update(result)
+                    result["co2_ppm"] = arduino.co2_ppm
                     if result["alert_event"]:
                         asyncio.run_coroutine_threadsafe(
                             _save_log_to_db(
@@ -863,6 +867,7 @@ class DetectionSession:
             self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
         finally:
             self._running = False
+            get_arduino().alarm_off()
 
 
 # ── 활성 세션 관리 (카메라 1대 → 세션 1개) ──

@@ -175,3 +175,16 @@ v6 중지 확인 API·2·3단계 직접 회복·중복 요청·새 위험 발생
 WebSocket JSON·오류·소유자 검사를 검증한다.
 실제 Flutter 화면·휴대폰 소리·진동의 통합 실행은 앱 소스와 기기가 없어 검증하지 않았다.
 모델의 여러 사용자·환경 일반화 여부도 별도의 검증 범위다.
+
+## 아두이노 경보기 (선택)
+
+서버 PC에 USB로 연결한 아두이노가 2·3단계 경보와 CO2 창문 개폐를 맡는다.
+스케치는 `arduino/drowsyguard_alarm/drowsyguard_alarm.ino`다.
+
+- `backend/.env`에 `ARDUINO_PORT=COM3`처럼 포트를 지정한다. 비워두면 사용하지 않는다.
+- 서버는 `drowsy_level`이 2·3이고 `alarm_acknowledged=false`일 때 `A1`, 아니면 `A0`를 1초마다 보낸다.
+  앱의 경보 중지(acknowledge)를 하면 아두이노 부저·LED도 꺼진다.
+- 아두이노는 3초 동안 명령이 없으면 스스로 경보를 끈다.
+- 창문(서보)은 아두이노가 CO2 2000ppm 이상에서 열고 1000ppm 미만에서 닫는다. 서버와 무관하게 동작한다.
+- WebSocket 결과와 `/health`에 `co2_ppm`(없으면 `null`)이 추가된다. `/health`의 `arduino_connected`로 연결을 확인한다.
+- 아두이노 IDE 시리얼 모니터가 열려 있으면 포트를 서버가 쓸 수 없으니 닫는다.

@@ -27,6 +27,9 @@ numpy
 scikit-learn
 matplotlib
 
+# Arduino alarm (USB serial)
+pyserial
+
 # Diagnostic test client
 requests==2.34.2
 websockets==16.0
