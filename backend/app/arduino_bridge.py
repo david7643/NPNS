@@ -1,10 +1,17 @@
 """아두이노 경보기(USB 시리얼) 연결.
 
-서버 → 아두이노: "A1\n"(경보 켜기) / "A0\n"(경보 끄기)를 1초마다 보낸다.
-아두이노는 3초 동안 명령이 없으면 스스로 경보를 끈다.
-아두이노 → 서버: "CO2:850\n" 형식으로 이산화탄소 농도를 보낸다.
-창문(서보) 개폐는 아두이노가 CO2 값으로 직접 판단한다.
-연결이 끊기면 백그라운드에서 5초마다 다시 연결한다.
+통신 규칙 (arduino/README.md와 동일)
+- 서버 → 아두이노: "A1\\n"(경보 켜기) / "A0\\n"(경보 끄기). 바뀌면 즉시, 아니면 1초마다 반복.
+- 아두이노 → 서버: "ACK:A1"/"ACK:A0"(명령 처리), "ERR:CMD"(거부),
+  "BOOT"(재부팅), "CO2:850"(측정값), "CO2:NA"(측정값 없음).
+
+스레드 구조
+- 감지 스레드는 update()/clear_alarm()으로 원하는 경보 상태만 바꾼다. 입출력을 하지 않는다.
+- 연결·송신·수신·재연결은 전용 워커 스레드 하나가 모두 맡는다.
+
+경보 정책
+- 원하는 경보 상태는 새 감지 결과로만 바뀐다. 감지가 멈추면 마지막 상태를 유지한다.
+  2·3단계 경보는 앱의 중지 확인(alarm_acknowledged)이나 감지 종료(clear_alarm)로만 꺼진다.
 """
 
 import logging
@@ -17,8 +24,14 @@ logger = logging.getLogger(__name__)
 
 RESEND_SECONDS = 1.0
 RECONNECT_SECONDS = 5.0
-WRITE_TIMEOUT_SECONDS = 0.5   # 아두이노가 멈춰도 감지 루프가 기다리지 않게
-CO2_STALE_SECONDS = 10.0      # 이 시간 동안 새 값이 없으면 co2_ppm을 None으로
+READ_TIMEOUT_SECONDS = 0.1    # 워커가 송신을 놓치지 않도록 짧게
+WRITE_TIMEOUT_SECONDS = 0.5   # 워커 스레드에서만 기다린다
+ACK_FRESH_SECONDS = 3.0       # 이 안에 ACK가 왔으면 장치가 응답 중
+CO2_STALE_SECONDS = 10.0
+CO2_MIN_VALID = 300           # 펌웨어와 같은 유효 범위
+CO2_MAX_VALID = 10000
+BOOT_WAIT_SECONDS = 2.0       # 포트를 열면 아두이노가 재부팅된다
+CLOSE_JOIN_SECONDS = BOOT_WAIT_SECONDS + 1.0
 
 
 def alarm_required(result: dict) -> bool:
@@ -28,125 +41,222 @@ def alarm_required(result: dict) -> bool:
 
 def _open_serial(port: str, baud: int):
     import serial  # pyserial
-    connection = serial.Serial(port, baud, timeout=1, write_timeout=WRITE_TIMEOUT_SECONDS)
-    time.sleep(2)  # 포트를 열면 아두이노가 재부팅된다
+    connection = serial.Serial(
+        port, baud, timeout=READ_TIMEOUT_SECONDS, write_timeout=WRITE_TIMEOUT_SECONDS,
+    )
+    time.sleep(BOOT_WAIT_SECONDS)
     return connection
 
 
 class ArduinoBridge:
-    def __init__(self, port: str | None, baud: int = 9600, serial_factory=None):
+    def __init__(self, port: str | None, baud: int = 9600, serial_factory=None, clock=time.monotonic):
         self._port = port
         self._baud = baud
         self._serial_factory = serial_factory or _open_serial
+        self._clock = clock
         self._serial = None
-        self._lock = threading.Lock()
         self._worker: threading.Thread | None = None
         self._running = False
-        self._last_alarm: bool | None = None
+        self._wake = threading.Event()
+
+        # 감지 스레드가 쓰는 값 (단일 대입만 하므로 잠금 불필요)
+        self._desired_alarm = False
+
+        # 워커 스레드가 쓰는 값
+        self._next_connect_at = 0.0
+        self._sent_alarm: bool | None = None
         self._last_sent_at = 0.0
-        self._co2_value: int | None = None
-        self._co2_at = 0.0
+        self._last_ack_at: float | None = None
+        self._device_alarm: bool | None = None
+        self._co2: tuple[int, float] | None = None   # (ppm, 수신 시각)
+
+    # ── 상태 조회 ──
+    @property
+    def enabled(self) -> bool:
+        return bool(self._port)
 
     @property
     def connected(self) -> bool:
         return self._serial is not None
 
     @property
-    def co2_ppm(self) -> int | None:
-        return self.co2_ppm_at(time.monotonic())
+    def desired_alarm(self) -> bool:
+        return self._desired_alarm
+
+    def responding_at(self, now: float) -> bool:
+        return self.connected and self._last_ack_at is not None and now - self._last_ack_at <= ACK_FRESH_SECONDS
+
+    @property
+    def responding(self) -> bool:
+        return self.responding_at(self._clock())
 
     def co2_ppm_at(self, now: float) -> int | None:
-        if self._co2_value is None or now - self._co2_at > CO2_STALE_SECONDS:
+        co2 = self._co2
+        if co2 is None or now - co2[1] > CO2_STALE_SECONDS:
             return None
-        return self._co2_value
+        return co2[0]
 
+    @property
+    def co2_ppm(self) -> int | None:
+        return self.co2_ppm_at(self._clock())
+
+    def status(self) -> dict:
+        now = self._clock()
+        return {
+            "arduino_enabled": self.enabled,
+            "arduino_connected": self.connected,
+            "arduino_responding": self.responding_at(now),
+            "arduino_alarm_on": self._device_alarm if self.responding_at(now) else None,
+            "co2_ppm": self.co2_ppm_at(now),
+        }
+
+    # ── 감지 스레드용 (입출력 없음) ──
+    def update(self, result: dict):
+        """새 감지 결과로 원하는 경보 상태를 정한다. 즉시 반환한다."""
+        self._set_desired(alarm_required(result))
+
+    def clear_alarm(self):
+        """감지 종료 등 명시적인 경보 해제."""
+        self._set_desired(False)
+
+    def _set_desired(self, alarm: bool):
+        if alarm != self._desired_alarm:
+            self._desired_alarm = alarm
+            self._wake.set()
+
+    # ── 수명 주기 ──
     def open(self):
-        """첫 연결을 시도하고, 수신·재연결을 맡는 백그라운드 스레드를 시작한다."""
+        """워커 스레드를 시작한다. 연결은 워커가 하므로 서버 시작을 지연시키지 않는다."""
         if not self._port or self._running:
             return
         self._running = True
-        self._connect()
-        self._worker = threading.Thread(target=self._worker_loop, daemon=True)
+        self._worker = threading.Thread(target=self._worker_loop, name="arduino-bridge", daemon=True)
         self._worker.start()
 
-    def update(self, result: dict, now: float | None = None):
-        """감지 결과마다 호출. 상태가 바뀌었거나 1초가 지났으면 명령을 보낸다."""
-        alarm = alarm_required(result)
-        now = time.monotonic() if now is None else now
-        if alarm != self._last_alarm or now - self._last_sent_at >= RESEND_SECONDS:
-            self._send(alarm, now)
-
-    def alarm_off(self):
-        self._send(False, time.monotonic())
-
     def close(self):
-        self.alarm_off()
+        """경보를 끄고 워커를 멈춘 뒤 포트를 닫는다."""
+        self._desired_alarm = False
         self._running = False
+        self._wake.set()
+        worker = self._worker
+        if worker is not None and worker is not threading.current_thread():
+            worker.join(timeout=CLOSE_JOIN_SECONDS)
+            if worker.is_alive():
+                logger.warning("아두이노 워커가 제때 끝나지 않았습니다. 연결이 끝나는 즉시 닫힙니다")
+        self._worker = None
+        if self._serial is not None:
+            self._write_line(b"A0\n")  # 워커가 끝났으므로 여기서만 포트를 만진다
         self._drop_connection()
 
-    def _connect(self) -> bool:
+    # ── 워커 ──
+    def _worker_loop(self):
+        while self._running:
+            self.service_once()
+            if self._serial is None and self._running:
+                self._wake.wait(timeout=READ_TIMEOUT_SECONDS)
+                self._wake.clear()
+        # 포트 정리는 close()가 워커 종료를 확인한 뒤에 한다
+
+    def service_once(self):
+        """워커의 한 주기: 연결 → 송신 → 수신. 테스트에서 직접 호출할 수 있다."""
+        if self._serial is None:
+            if self._clock() >= self._next_connect_at:
+                self._connect()
+            return
+        self._send_if_due(self._clock())
+        if self._serial is not None:
+            self._read_one_line()
+
+    def _connect(self):
         try:
             connection = self._serial_factory(self._port, self._baud)
         except Exception as error:
             logger.warning("아두이노 연결 실패: port=%s (%s). %d초 후 재시도", self._port, error, RECONNECT_SECONDS)
-            return False
-        with self._lock:
-            self._serial = connection
-        self._last_alarm = None  # 재부팅된 아두이노에 현재 상태를 바로 다시 보낸다
+            self._next_connect_at = self._clock() + RECONNECT_SECONDS
+            return
+        if not self._running:
+            # 연결하는 동안 close()가 호출됐다. 열린 포트를 남기지 않는다.
+            try:
+                connection.close()
+            except Exception:
+                logger.debug("종료 중 연결된 포트 닫기 실패", exc_info=True)
+            return
+        self._serial = connection
+        self._reset_link_state()
         logger.info("아두이노 연결됨: port=%s", self._port)
-        return True
+
+    def _reset_link_state(self):
+        """새 연결·재부팅·연결 끊김마다 이전 장치 상태와 CO2를 버린다."""
+        self._sent_alarm = None
+        self._last_ack_at = None
+        self._device_alarm = None
+        self._co2 = None
 
     def _drop_connection(self):
-        with self._lock:
-            connection, self._serial = self._serial, None
+        connection, self._serial = self._serial, None
+        self._reset_link_state()
         if connection is not None:
             try:
                 connection.close()
             except Exception:
                 logger.exception("아두이노 포트 닫기 실패")
 
-    def _send(self, alarm: bool, now: float):
-        with self._lock:
-            connection = self._serial
-            if connection is None:
-                return
-            try:
-                connection.write(b"A1\n" if alarm else b"A0\n")
-            except Exception as error:
-                logger.warning("아두이노 전송 실패 (%s). 연결을 끊고 재연결합니다", error)
-                connection = None
-        if connection is None:
-            self._drop_connection()
+    def _send_if_due(self, now: float):
+        alarm = self._desired_alarm
+        if alarm == self._sent_alarm and now - self._last_sent_at < RESEND_SECONDS:
             return
-        self._last_alarm = alarm
-        self._last_sent_at = now
+        if self._write_line(b"A1\n" if alarm else b"A0\n"):
+            self._sent_alarm = alarm
+            self._last_sent_at = now
 
-    def handle_line(self, line: str, now: float | None = None):
+    def _write_line(self, data: bytes) -> bool:
+        connection = self._serial
+        if connection is None:
+            return False
+        try:
+            connection.write(data)
+            return True
+        except Exception as error:
+            logger.warning("아두이노 전송 실패 (%s). 연결을 끊고 재연결합니다", error)
+            self._lose_connection()
+            return False
+
+    def _read_one_line(self):
+        try:
+            raw = self._serial.readline()
+        except Exception as error:
+            logger.warning("아두이노 수신 실패 (%s). 재연결합니다", error)
+            self._lose_connection()
+            return
+        if raw:
+            self.handle_line(raw.decode("utf-8", errors="ignore"), self._clock())
+
+    def _lose_connection(self):
+        self._drop_connection()
+        self._next_connect_at = self._clock() + RECONNECT_SECONDS
+
+    def handle_line(self, line: str, now: float):
         line = line.strip()
-        if line.startswith("CO2:"):
+        if line in ("ACK:A0", "ACK:A1"):
+            self._last_ack_at = now
+            self._device_alarm = line == "ACK:A1"
+        elif line == "BOOT":
+            # 재부팅한 장치는 경보가 꺼져 있다. 현재 상태를 바로 다시 보낸다.
+            self._sent_alarm = None
+            self._device_alarm = False
+            self._co2 = None
+        elif line == "ERR:CMD":
+            logger.warning("아두이노가 명령을 거부했습니다")
+        elif line == "CO2:NA":
+            self._co2 = None
+        elif line.startswith("CO2:"):
             try:
                 value = int(line[4:])
             except ValueError:
                 return
-            self._co2_value = value
-            self._co2_at = time.monotonic() if now is None else now
-
-    def _worker_loop(self):
-        while self._running:
-            connection = self._serial
-            if connection is None:
-                time.sleep(RECONNECT_SECONDS)
-                if self._running:
-                    self._connect()
-                continue
-            try:
-                raw = connection.readline()
-            except Exception as error:
-                logger.warning("아두이노 수신 실패 (%s). 재연결합니다", error)
-                self._drop_connection()
-                continue
-            if raw:
-                self.handle_line(raw.decode("utf-8", errors="ignore"))
+            if CO2_MIN_VALID <= value <= CO2_MAX_VALID:
+                self._co2 = (value, now)
+            # 범위를 벗어난 값은 버리고 기존 값의 유효기간도 늘리지 않는다
 
 
 arduino = ArduinoBridge(None)

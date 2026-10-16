@@ -28,7 +28,7 @@ scikit-learn
 matplotlib
 
 # Arduino alarm (USB serial)
-pyserial
+pyserial==3.5
 
 # Diagnostic test client
 requests==2.34.2

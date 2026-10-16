@@ -62,8 +62,7 @@ async def health_check():
         "status": "ok" if model_status and camera_status else "not_ready",
         "models_ready": model_status,
         "camera_available": camera_status,
-        "arduino_connected": get_arduino().connected,
-        "co2_ppm": get_arduino().co2_ppm,
+        **get_arduino().status(),
         "detection_active": bool(active and active.is_running),
         "active_session_id": active.session_id if active and active.is_running else None,
     }

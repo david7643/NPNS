@@ -1,0 +1,48 @@
+name: backend & arduino checks
+
+on:
+  pull_request:
+    paths:
+      - "backend/**"
+      - "arduino/**"
+      - ".github/workflows/backend-arduino-checks.yml"
+  push:
+    branches: [master]
+    paths:
+      - "backend/**"
+      - "arduino/**"
+      - ".github/workflows/backend-arduino-checks.yml"
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies (no GPU/TensorFlow needed for unit tests)
+        run: |
+          grep -v -E '^(tensorflow|opencv-python|matplotlib)\b' requirements.txt > ci-requirements.txt
+          pip install -r ci-requirements.txt opencv-python-headless ruff==0.6.9
+      - name: Lint Arduino bridge
+        run: ruff check --isolated --select E,F,W --line-length 120 app/arduino_bridge.py tests/test_arduino_bridge.py
+      - name: Unit tests
+        run: python -m unittest discover -s tests -v
+
+  firmware:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Host tests (no board)
+        run: bash arduino/test/run.sh
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Build for Arduino Uno
+        run: |
+          arduino-cli core update-index
+          arduino-cli core install arduino:avr
+          arduino-cli lib install Servo
+          arduino-cli compile --fqbn arduino:avr:uno --warnings all arduino/drowsyguard_alarm
