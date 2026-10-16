@@ -55,6 +55,13 @@ class EventRiskTests(unittest.TestCase):
         self.assertEqual(self.observe(9.95, eyes="open")["level"], 1)
         self.assertEqual(self.observe(0.05, eyes="open")["level"], 0)
 
+    def test_level_one_recovery_starts_a_fresh_event_history(self):
+        self.observe(1.3)
+        recovered = self.observe(10.05, eyes="open")
+        self.assertEqual(recovered["level"], 0)
+        self.assertEqual(recovered["recent_event_count"], 0)
+        self.assertEqual(self.observe(1.3)["level"], 1)
+
     def test_level_two_goes_directly_to_zero_ten_seconds_after_acknowledgement(self):
         self.event()
         self.observe(1.3)

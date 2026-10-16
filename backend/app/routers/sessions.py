@@ -3,15 +3,34 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update, case
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import DrivingSession, User
-from app.schemas import SessionEndRequest, SessionEndResponse, SessionResponse, SessionStartResponse
+from app.schemas import SessionEndRequest, SessionEndResponse, SessionResponse, SessionStartResponse, SessionDistanceUpdate
 
 router = APIRouter(prefix="/sessions", tags=["sessions"])
+
+
+@router.put("/{session_id}/distance")
+async def update_distance(
+    session_id: int, body: SessionDistanceUpdate,
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """재전송·역순 도착으로 누적 거리가 감소하지 않게 저장한다. 종료 후 전송도 허용한다."""
+    result = await db.execute(update(DrivingSession).where(
+        DrivingSession.id == session_id, DrivingSession.user_id == current_user.id,
+    ).values(distance_meters=case(
+        (DrivingSession.distance_meters < body.distance_meters, body.distance_meters),
+        else_=DrivingSession.distance_meters,
+    )))
+    if not result.rowcount:
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+    await db.commit()
+    saved = (await db.execute(select(DrivingSession.distance_meters).where(DrivingSession.id == session_id))).scalar_one()
+    return {"session_id": session_id, "status": "saved", "distance_meters": saved}
 
 
 @router.post("/start", response_model=SessionStartResponse, status_code=status.HTTP_201_CREATED)

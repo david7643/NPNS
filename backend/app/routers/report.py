@@ -7,6 +7,7 @@ from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
+from app.report_observations import metrics_for
 from app.dependencies import get_current_user
 from app.models import DetectionLog, DrivingSession, User
 from app.schemas import (
@@ -25,6 +26,18 @@ DEDUCTIONS = {1: 2, 2: 5, 3: 15}
 
 def utc_datetime(value):
     return value.replace(tzinfo=timezone.utc) if value is not None and value.tzinfo is None else value
+
+
+def event_item(log):
+    return DrowsyEventItem(
+        timestamp=utc_datetime(log.timestamp), drowsy_level=log.drowsy_level,
+        latitude=log.latitude, longitude=log.longitude,
+        event_id=getattr(log, "event_id", None),
+        app_received_at=utc_datetime(getattr(log, "app_received_at", None)),
+        location_measured_at=utc_datetime(getattr(log, "location_measured_at", None)),
+        location_accuracy_meters=getattr(log, "location_accuracy_meters", None),
+        location_status=getattr(log, "location_status", None),
+    )
 
 
 def date_bounds(target_date, utc_offset_minutes):
@@ -46,7 +59,7 @@ def get_grade(score: int) -> str:
         return "danger"
 
 
-def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict:
+def build_report_data(session: DrivingSession, logs: list[DetectionLog], utc_offset_minutes: int = 0) -> dict:
     """세션 + 로그로 리포트 데이터 계산."""
     score = calc_safety_score(logs)
     grade = get_grade(score)
@@ -66,7 +79,7 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
     hour_max_level: dict[int, int] = {}
     for log in logs:
         if log.drowsy_level > 0:
-            hour = log.timestamp.hour
+            hour = (log.timestamp + timedelta(minutes=utc_offset_minutes)).hour
             if hour not in hour_level_counts:
                 hour_level_counts[hour] = {1: 0, 2: 0, 3: 0}
             hour_level_counts[hour][log.drowsy_level] += 1
@@ -91,12 +104,7 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
         most_dangerous_time = f"{peak_hour:02d}:00~{(peak_hour + 1) % 24:02d}:00"
 
     events = [
-        DrowsyEventItem(
-            timestamp=utc_datetime(log.timestamp),
-            drowsy_level=log.drowsy_level,
-            latitude=log.latitude,
-            longitude=log.longitude,
-        )
+        event_item(log)
         for log in logs
         if log.drowsy_level > 0
     ]
@@ -106,6 +114,7 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
         "started_at": utc_datetime(session.started_at),
         "ended_at": utc_datetime(session.ended_at),
         "duration_minutes": duration_minutes,
+        "distance_meters": getattr(session, "distance_meters", 0.0) or 0.0,
         "safety_score": score,
         "grade": grade,
         "total_drowsy_count": sum(level_counts.values()),
@@ -120,6 +129,7 @@ def build_report_data(session: DrivingSession, logs: list[DetectionLog]) -> dict
 
 @router.get("/summary", response_model=ReportSummaryResponse, summary="최근 세션 리포트 요약")
 async def get_report_summary(
+    utc_offset_minutes: int = Query(0, ge=-720, le=840),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -136,7 +146,8 @@ async def get_report_summary(
     logs_result = await db.execute(select(DetectionLog).where(DetectionLog.session_id == session.id))
     logs = logs_result.scalars().all()
 
-    return ReportSummaryResponse(**build_report_data(session, logs))
+    return ReportSummaryResponse(**build_report_data(session, logs, utc_offset_minutes),
+                                 **await metrics_for(db, [session.id]))
 
 
 @router.get("/history", response_model=ReportHistoryResponse, summary="전체 세션 히스토리 목록")
@@ -159,6 +170,7 @@ async def get_report_history(
         logs = logs_result.scalars().all()
         data = build_report_data(session, logs)
         history.append(ReportHistoryItem(
+            **await metrics_for(db, [session.id]),
             session_id=data["session_id"],
             started_at=data["started_at"],
             ended_at=data["ended_at"],
@@ -166,6 +178,7 @@ async def get_report_history(
             safety_score=data["safety_score"],
             grade=data["grade"],
             total_drowsy_count=data["total_drowsy_count"],
+            distance_meters=data["distance_meters"],
         ))
 
     return ReportHistoryResponse(total_sessions=len(history), sessions=history)
@@ -174,6 +187,7 @@ async def get_report_history(
 @router.get("/detail/{session_id}", response_model=ReportDetailResponse, summary="특정 세션 상세 리포트")
 async def get_report_detail(
     session_id: int,
+    utc_offset_minutes: int = Query(0, ge=-720, le=840),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -192,7 +206,8 @@ async def get_report_detail(
     )
     logs = logs_result.scalars().all()
 
-    return ReportDetailResponse(**build_report_data(session, logs))
+    return ReportDetailResponse(**build_report_data(session, logs, utc_offset_minutes),
+                                **await metrics_for(db, [session.id]))
 
 @router.get("/by-date", response_model=ReportByDateResponse, summary="특정 날짜 리포트 (세션 합산)")
 async def get_report_by_date(
@@ -267,17 +282,13 @@ async def get_report_by_date(
         most_dangerous_time = f"{peak_hour:02d}:00~{(peak_hour + 1) % 24:02d}:00"
 
     events = [
-        DrowsyEventItem(
-            timestamp=utc_datetime(log.timestamp),
-            drowsy_level=log.drowsy_level,
-            latitude=log.latitude,
-            longitude=log.longitude,
-        )
+        event_item(log)
         for log in logs
         if log.drowsy_level > 0
     ]
 
     return ReportByDateResponse(
+        **await metrics_for(db, session_ids, day_start, day_end),
         date=date,
         session_count=len(sessions),
         safety_score=score,

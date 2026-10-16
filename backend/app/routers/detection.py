@@ -1,19 +1,70 @@
 """실시간 졸음 감지 API."""
 
 import asyncio
+from uuid import UUID
+from datetime import timezone
 
-from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect, status, Query
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import async_session, get_db
+from app.auth import storage_account_key
 from app.dependencies import get_current_user, resolve_current_user
 from app.detection_service import get_active_session, models_ready, model_runtime_info, start_detection, stop_detection
-from app.models import DrivingSession, User
-from app.schemas import DetectionStartRequest, DetectionStartResponse, DetectionStatusResponse
+from app.models import DetectionLog, DrivingSession, User
+from app.schemas import AlarmAcknowledgeRequest, DetectionStartRequest, DetectionStartResponse, DetectionStatusResponse, EventLocationUpdate
 
 router = APIRouter(prefix="/detection", tags=["detection"])
 WS_AUTH_RECHECK_SECONDS = 1.0
+
+
+@router.get("/events")
+async def recover_events(
+    after: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=200),
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """Committed row IDs are the cursor; UUIDs identify records, not their order."""
+    logs = (await db.execute(select(DetectionLog).where(
+        DetectionLog.user_id == current_user.id, DetectionLog.id > after,
+        DetectionLog.drowsy_level > 0,
+    ).order_by(DetectionLog.id).limit(limit + 1))).scalars().all()
+    rows = logs[:limit]
+    def utc(value):
+        return value.replace(tzinfo=timezone.utc) if value else None
+    return {"next_cursor": rows[-1].id if rows else after, "has_more": len(logs) > limit,
+        "events": [dict(cursor=log.id, event_id=log.event_id or f"legacy:{log.id}", session_id=log.session_id,
+            detected_at=utc(log.timestamp), episode_id=log.episode_id, stage=log.drowsy_level,
+            ear=log.ear_value, prediction_score=log.pred_score,
+            latitude=log.latitude, longitude=log.longitude, app_received_at=utc(log.app_received_at),
+            location_measured_at=utc(log.location_measured_at), accuracy_meters=log.location_accuracy_meters,
+            location_status=log.location_status or "not_recorded") for log in rows]}
+
+
+@router.put("/events/{event_id}/location")
+async def update_event_location(
+    event_id: UUID, body: EventLocationUpdate,
+    current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db),
+):
+    """서버 사건에 최초 앱 수신 당시 위치를 연결한다. 재전송은 같은 결과를 반환한다."""
+    result = await db.execute(select(DetectionLog).where(
+        DetectionLog.event_id == str(event_id), DetectionLog.user_id == current_user.id,
+        DetectionLog.session_id == body.session_id,
+    ))
+    log = result.scalar_one_or_none()
+    if log is None:
+        raise HTTPException(status_code=404, detail="연결할 감지 기록을 찾을 수 없습니다")
+    if log.app_received_at is None:
+        await db.execute(update(DetectionLog).where(
+            DetectionLog.id == log.id, DetectionLog.app_received_at.is_(None),
+        ).values(
+            app_received_at=body.received_at.astimezone(timezone.utc).replace(tzinfo=None),
+            latitude=body.latitude, longitude=body.longitude,
+            location_measured_at=body.measured_at.astimezone(timezone.utc).replace(tzinfo=None) if body.measured_at else None,
+            location_accuracy_meters=body.accuracy_meters, location_status=body.location_status,
+        ))
+        await db.commit()
+    return {"event_id": str(event_id), "status": "saved"}
 
 
 @router.post("/start", response_model=DetectionStartResponse)
@@ -44,7 +95,7 @@ async def start(
 
     loop = asyncio.get_running_loop()
     try:
-        start_detection(body.session_id, current_user.id, loop)
+        start_detection(body.session_id, current_user.id, loop, storage_account_key(current_user))
     except RuntimeError as e:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -84,7 +135,7 @@ async def stop(
 
 @router.post("/alarm/acknowledge", status_code=status.HTTP_202_ACCEPTED)
 async def acknowledge_alarm(
-    body: DetectionStartRequest,
+    body: AlarmAcknowledgeRequest,
     current_user: User = Depends(get_current_user),
 ):
     """앱 중지 버튼의 경보 중지 확인을 카메라 스레드에 전달한다."""
@@ -95,7 +146,14 @@ async def acknowledge_alarm(
         raise HTTPException(status_code=403, detail="다른 사용자의 경보는 제어할 수 없습니다")
     if not active.latest_result or active.latest_result.get("drowsy_level") not in (2, 3):
         raise HTTPException(status_code=409, detail="2·3단계 경보에서만 중지 확인이 필요합니다")
-    active.acknowledge_alarm()
+    risk_id = getattr(body, "risk_id", None)
+    expected = active.latest_result.get("risk_id")
+    if expected and risk_id != expected:
+        raise HTTPException(status_code=409, detail="새 위험이 발생했습니다. 현재 경보에서 다시 중지해주세요")
+    if expected:
+        active.acknowledge_alarm(risk_id)
+    else:
+        active.acknowledge_alarm()
     return {"session_id": body.session_id, "status": "accepted",
             "message": "경보 중지 확인을 접수했습니다. 정상 상태 10초 확인 후 0단계로 회복합니다."}
 

@@ -1,6 +1,7 @@
 """DrowsyGuard 백엔드 서버 메인 엔트리포인트."""
 
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 import sys
 
@@ -27,11 +28,17 @@ from app.routers import auth, contacts, detection, report, sessions
 async def lifespan(app: FastAPI):
     """서버 시작 시 DB 테이블 생성 및 AI 모델 로드."""
     await init_db()
+    from app.record_journal import get_journal, run_writer
+    get_journal()
+    writer_stop = asyncio.Event()
+    writer = asyncio.create_task(run_writer(writer_stop))
     load_models()
     try:
         yield
     finally:
         stop_detection()
+        writer_stop.set()
+        await writer
 
 
 app = FastAPI(
@@ -61,6 +68,7 @@ async def health_check():
         "camera_available": camera_status,
         "detection_active": bool(active and active.is_running),
         "active_session_id": active.session_id if active and active.is_running else None,
+        "record_storage_error": active.latest_result.get("storage_error") if active and active.latest_result else None,
     }
 
 

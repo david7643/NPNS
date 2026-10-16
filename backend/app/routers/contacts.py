@@ -1,19 +1,48 @@
 """긴급 연락처 CRUD 라우터."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.dependencies import get_current_user
 from app.models import Contact, User
-from app.schemas import ContactCreate, ContactResponse, SavedContactUpdate
+from app.schemas import ContactCreate, ContactResponse, SavedContactUpdate, SmsSettingsUpdate
 
 router = APIRouter(prefix="/contacts", tags=["contacts"])
 
 
 def normalize_phone(value: str) -> str:
     return "".join(character for character in value if character.isdigit())
+
+
+async def lock_contact_settings(db, user_id):
+    # Serialize count/change operations in SQLite, including simultaneous last deletes.
+    await db.execute(update(User).where(User.id == user_id).values(auto_sms_enabled=User.auto_sms_enabled))
+
+
+async def settings_snapshot(db, user_id):
+    enabled = (await db.execute(select(User.auto_sms_enabled).where(User.id == user_id))).scalar_one()
+    contacts = (await db.execute(select(Contact).where(Contact.user_id == user_id).order_by(Contact.id))).scalars().all()
+    return {"enabled": bool(enabled and contacts), "contact_count": len(contacts),
+            "contacts": [ContactResponse.model_validate(contact) for contact in contacts]}
+
+
+@router.get("/sms-settings")
+async def get_sms_settings(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    return await settings_snapshot(db, current_user.id)
+
+
+@router.put("/sms-settings")
+async def update_sms_settings(body: SmsSettingsUpdate, current_user: User = Depends(get_current_user),
+                              db: AsyncSession = Depends(get_db)):
+    await lock_contact_settings(db, current_user.id)
+    snapshot = await settings_snapshot(db, current_user.id)
+    if body.enabled and not snapshot["contact_count"]:
+        raise HTTPException(status_code=409, detail="자동 SMS를 켜려면 연락처를 한 명 이상 등록해주세요")
+    await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=body.enabled))
+    await db.commit()
+    return await settings_snapshot(db, current_user.id)
 
 
 @router.get("", response_model=list[ContactResponse])
@@ -33,6 +62,7 @@ async def create_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await lock_contact_settings(db, current_user.id)
     normalized_phone = normalize_phone(body.phone)
     if len(normalized_phone) not in range(8, 16):
         raise HTTPException(status_code=400, detail="전화번호는 8~15자리 숫자여야 합니다")
@@ -59,6 +89,7 @@ async def update_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await lock_contact_settings(db, current_user.id)
     result = await db.execute(
         select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
     )
@@ -89,6 +120,7 @@ async def delete_contact(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    await lock_contact_settings(db, current_user.id)
     result = await db.execute(
         select(Contact).where(Contact.id == contact_id, Contact.user_id == current_user.id)
     )
@@ -97,4 +129,7 @@ async def delete_contact(
         raise HTTPException(status_code=404, detail="연락처를 찾을 수 없습니다")
 
     await db.delete(contact)
+    await db.flush()
+    if not (await settings_snapshot(db, current_user.id))["contact_count"]:
+        await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=False))
     await db.commit()
