@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     # 상대 경로는 app/ 기준이 아닌 backend/ 기준으로 해석한다.
     DROWSINESS_MODEL_DIR: str | None = None
     DROWSINESS_CAMERA_INDEX: int = 0
+    # 아두이노 경보기 포트 (예: COM3, /dev/ttyACM0). 비워두면 사용하지 않는다.
+    ARDUINO_PORT: str | None = None
+    ARDUINO_BAUD: int = 9600
 
     model_config = {"env_file": str(Path(__file__).resolve().parents[1] / ".env")}
 

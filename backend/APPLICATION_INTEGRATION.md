@@ -175,3 +175,27 @@ v6 중지 확인 API·2·3단계 직접 회복·중복 요청·새 위험 발생
 WebSocket JSON·오류·소유자 검사를 검증한다.
 실제 Flutter 화면·휴대폰 소리·진동의 통합 실행은 앱 소스와 기기가 없어 검증하지 않았다.
 모델의 여러 사용자·환경 일반화 여부도 별도의 검증 범위다.
+
+## 아두이노 경보기 (선택)
+
+서버 PC에 USB로 연결한 아두이노가 2·3단계 경보와 CO2 창문 개폐를 맡는다.
+배선·전원·시리얼 규칙·장애 시 동작은 [`arduino/README.md`](../arduino/README.md)에 정리했다.
+
+설정
+- `pip install -r requirements.txt` (`pyserial==3.5` 포함)
+- `backend/.env`에 `ARDUINO_PORT=COM3`처럼 서버 PC에서 보이는 포트를 지정한다. 비워두면 사용하지 않는다.
+- 아두이노 IDE 시리얼 모니터가 열려 있으면 서버가 포트를 쓸 수 없으니 닫는다.
+
+경보 연동
+- 서버는 `drowsy_level`이 2·3이고 `alarm_acknowledged=false`이면 `A1`, 아니면 `A0`를 보낸다.
+  상태가 바뀌면 즉시, 같으면 1초마다 다시 보낸다. 송신은 전용 스레드가 하므로 감지 루프를 막지 않는다.
+- 카메라·추론이 멈춰도 마지막 경보 상태를 유지한다. 앱의 경보 중지 확인 또는 `/detection/stop`으로 끈다.
+  감지 루프가 오류로 끝난 경우 중지 확인 API는 404이므로 앱은 `/detection/stop`을 호출한다.
+- 서버 시작 시 아두이노 연결을 기다리지 않는다. 연결 실패·단절 시 5초마다 다시 연결한다.
+
+상태 확인
+- WebSocket 결과에 `co2_ppm`(유효 측정값이 없으면 `null`)과 `arduino_responding`이 추가된다.
+- `/health`에 `arduino_enabled`, `arduino_connected`(포트 열림), `arduino_responding`(최근 3초 안에 명령 ACK 수신),
+  `arduino_alarm_on`(응답 중일 때 장치가 보고한 경보 상태), `co2_ppm`이 추가된다.
+  `status`는 카메라·모델 기준이며 아두이노 상태를 포함하지 않는다.
+- CO2 값은 연결이 끊기거나 다시 연결되면 지워지고, 새 연결에서 유효 측정값(300~10000ppm)을 받은 뒤에만 표시된다.

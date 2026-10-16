@@ -16,6 +16,7 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import joblib
+from app.arduino_bridge import get_arduino
 from app.config import get_settings
 
 from app.ear_sequence import (
@@ -825,6 +826,7 @@ class DetectionSession:
         if self._thread:
             self._thread.join(timeout=5)
             self._thread = None
+        get_arduino().clear_alarm()  # 감지를 명시적으로 끝내면 경보도 끈다
 
     def _put_result(self, result: dict):
         """스레드 → async 큐 브릿지."""
@@ -848,6 +850,10 @@ class DetectionSession:
                 while self._running:
                     self._apply_alarm_ack_requests(detector.processor)
                     _, result = detector.read()
+                    arduino = get_arduino()
+                    arduino.update(result)  # 원하는 상태만 바꾸고 바로 반환 (송신은 아두이노 워커)
+                    result["co2_ppm"] = arduino.co2_ppm
+                    result["arduino_responding"] = arduino.responding
                     if result["alert_event"]:
                         asyncio.run_coroutine_threadsafe(
                             _save_log_to_db(
@@ -863,6 +869,7 @@ class DetectionSession:
             self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
         finally:
             self._running = False
+            # 감지가 멈춰도 아두이노 경보는 유지한다. 앱 중지 확인이나 stop()에서만 끈다.
 
 
 # ── 활성 세션 관리 (카메라 1대 → 세션 1개) ──

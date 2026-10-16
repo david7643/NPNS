@@ -11,6 +11,7 @@ if __package__ in (None, ""):
 
 from fastapi import FastAPI
 
+from app.arduino_bridge import get_arduino, start_arduino
 from app.database import init_db
 from app.detection_service import (
     camera_available,
@@ -28,10 +29,12 @@ async def lifespan(app: FastAPI):
     """서버 시작 시 DB 테이블 생성 및 AI 모델 로드."""
     await init_db()
     load_models()
+    start_arduino()
     try:
         yield
     finally:
         stop_detection()
+        get_arduino().close()
 
 
 app = FastAPI(
@@ -59,6 +62,7 @@ async def health_check():
         "status": "ok" if model_status and camera_status else "not_ready",
         "models_ready": model_status,
         "camera_available": camera_status,
+        **get_arduino().status(),
         "detection_active": bool(active and active.is_running),
         "active_session_id": active.session_id if active and active.is_running else None,
     }
