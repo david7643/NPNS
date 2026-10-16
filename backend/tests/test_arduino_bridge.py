@@ -1,6 +1,7 @@
 import threading
 import time
 import unittest
+from unittest.mock import patch
 
 from app import arduino_bridge
 from app.arduino_bridge import ArduinoBridge, alarm_required
@@ -142,6 +143,16 @@ class DeviceResponseTests(unittest.TestCase):
         self.bridge.service_once()
         self.assertEqual(self.port.written, [b"A1\n", b"A1\n"])
 
+    def test_boot_requires_an_ack_from_the_new_boot(self):
+        self.bridge.handle_line("ACK:A1", now=self.clock())
+        self.assertTrue(self.bridge.responding)
+        self.bridge.handle_line("BOOT", now=self.clock())
+        self.assertFalse(self.bridge.responding)
+        self.assertIsNone(self.bridge.status()["arduino_alarm_on"])
+        self.bridge.handle_line("ACK:A0", now=self.clock())
+        self.assertTrue(self.bridge.responding)
+        self.assertFalse(self.bridge.status()["arduino_alarm_on"])
+
 
 class ConnectionTests(unittest.TestCase):
     def test_write_failure_drops_and_reconnects_with_current_state(self):
@@ -179,6 +190,77 @@ class ConnectionTests(unittest.TestCase):
 
 
 class LifecycleTests(unittest.TestCase):
+    def test_close_racing_with_connection_registration_closes_the_port(self):
+        entered, release, close_started, close_done = (threading.Event() for _ in range(4))
+        port = FakeSerial()
+
+        class PausingBridge(ArduinoBridge):
+            def __setattr__(self, name, value):
+                if name == "_serial" and value is port and not entered.is_set():
+                    entered.set()
+                    release.wait(3)
+                super().__setattr__(name, value)
+
+        bridge = PausingBridge("FAKE", serial_factory=lambda *args: port)
+
+        def close():
+            close_started.set()
+            bridge.close()
+            close_done.set()
+
+        with patch.object(arduino_bridge, "CLOSE_JOIN_SECONDS", 0.01):
+            bridge.open()
+            worker = bridge._worker
+            closer = threading.Thread(target=close)
+            try:
+                self.assertTrue(entered.wait(2))
+                closer.start()
+                self.assertTrue(close_started.wait(2))
+                close_done.wait(0.05)
+            finally:
+                release.set()
+                if closer.ident is not None:
+                    closer.join(2)
+                worker.join(2)
+                bridge.close()
+        self.assertFalse(worker.is_alive())
+        self.assertFalse(closer.is_alive())
+        self.assertTrue(port.closed)
+        self.assertFalse(bridge.connected)
+
+    def test_close_timeout_leaves_io_and_cleanup_to_the_worker(self):
+        entered, release = threading.Event(), threading.Event()
+
+        class SlowSerial(FakeSerial):
+            def write(self, data):
+                if not entered.is_set():
+                    entered.set()
+                    release.wait(3)
+                super().write(data)
+
+        port = SlowSerial()
+        bridge = ArduinoBridge("FAKE", serial_factory=lambda *args: port)
+        bridge.update({"drowsy_level": 3})
+        bridge.open()
+        worker = bridge._worker
+        try:
+            self.assertTrue(entered.wait(2))
+            with patch.object(arduino_bridge, "CLOSE_JOIN_SECONDS", 0.01):
+                bridge.close()
+            self.assertIs(bridge._worker, worker)
+            self.assertTrue(worker.is_alive())
+            self.assertFalse(port.closed)
+            bridge.open()
+            self.assertIs(bridge._worker, worker)
+        finally:
+            release.set()
+            worker.join(2)
+            bridge.close()
+        self.assertFalse(worker.is_alive())
+        self.assertTrue(port.closed)
+        self.assertFalse(bridge.connected)
+        self.assertEqual(port.written[-1], b"A0\n")
+
     def test_open_does_not_block_on_slow_connect(self):
         release = threading.Event()
 
@@ -291,7 +373,9 @@ class DetectionSessionAlarmPolicyTests(unittest.IsolatedAsyncioTestCase):
         frames = iter(results)
 
         class FakeDetector:
-            processor = SimpleNamespace(engine=SimpleNamespace(acknowledge_alarm=lambda now: None))
+            processor = SimpleNamespace(engine=SimpleNamespace(
+                acknowledge_alarm=lambda now: None, alarm_generation=0, alarm_acknowledged=False,
+            ))
 
             def __enter__(self):
                 return self

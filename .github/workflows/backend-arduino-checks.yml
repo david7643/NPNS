@@ -31,7 +31,10 @@ jobs:
           grep -v -E '^(tensorflow|opencv-python|matplotlib)\b' requirements.txt > ci-requirements.txt
           pip install -r ci-requirements.txt opencv-python-headless ruff==0.6.9
       - name: Lint Arduino bridge
-        run: ruff check --isolated --select E,F,W --line-length 120 app/arduino_bridge.py tests/test_arduino_bridge.py
+        run: |
+          ruff check --isolated --select E,F,W --line-length 120 \
+            app/arduino_bridge.py tests/test_arduino_bridge.py tests/test_detection_session_lifecycle.py
+          ruff check --isolated --select F app/detection_service.py
       - name: Unit tests
         run: |
           set -o pipefail

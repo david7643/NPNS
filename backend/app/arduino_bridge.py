@@ -58,6 +58,7 @@ class ArduinoBridge:
         self._worker: threading.Thread | None = None
         self._running = False
         self._wake = threading.Event()
+        self._lifecycle_lock = threading.Lock()
 
         # 감지 스레드가 쓰는 값 (단일 대입만 하므로 잠금 불필요)
         self._desired_alarm = False
@@ -127,35 +128,45 @@ class ArduinoBridge:
     # ── 수명 주기 ──
     def open(self):
         """워커 스레드를 시작한다. 연결은 워커가 하므로 서버 시작을 지연시키지 않는다."""
-        if not self._port or self._running:
-            return
-        self._running = True
-        self._worker = threading.Thread(target=self._worker_loop, name="arduino-bridge", daemon=True)
-        self._worker.start()
+        with self._lifecycle_lock:
+            if not self._port or self._running or (self._worker and self._worker.is_alive()):
+                return
+            self._running = True
+            self._next_connect_at = 0.0
+            self._worker = threading.Thread(target=self._worker_loop, name="arduino-bridge", daemon=True)
+            self._worker.start()
 
     def close(self):
-        """경보를 끄고 워커를 멈춘 뒤 포트를 닫는다."""
-        self._desired_alarm = False
-        self._running = False
-        self._wake.set()
-        worker = self._worker
+        """종료를 요청한다. 포트 입출력과 최종 정리는 기존 워커가 끝낸다."""
+        with self._lifecycle_lock:
+            self._desired_alarm = False
+            self._running = False
+            self._wake.set()
+            worker = self._worker
+            connection = self._detach_connection() if worker is None else None
+        self._close_serial(connection, alarm_off=True)
         if worker is not None and worker is not threading.current_thread():
             worker.join(timeout=CLOSE_JOIN_SECONDS)
             if worker.is_alive():
-                logger.warning("아두이노 워커가 제때 끝나지 않았습니다. 연결이 끝나는 즉시 닫힙니다")
-        self._worker = None
-        if self._serial is not None:
-            self._write_line(b"A0\n")  # 워커가 끝났으므로 여기서만 포트를 만진다
-        self._drop_connection()
+                logger.warning("아두이노 워커 종료 대기 중입니다. 워커가 포트를 정리한 뒤 종료합니다")
+                return
+            with self._lifecycle_lock:
+                if self._worker is worker:
+                    self._worker = None
 
     # ── 워커 ──
     def _worker_loop(self):
-        while self._running:
-            self.service_once()
-            if self._serial is None and self._running:
-                self._wake.wait(timeout=READ_TIMEOUT_SECONDS)
-                self._wake.clear()
-        # 포트 정리는 close()가 워커 종료를 확인한 뒤에 한다
+        try:
+            while self._running:
+                self.service_once()
+                if self._serial is None and self._running:
+                    self._wake.wait(timeout=READ_TIMEOUT_SECONDS)
+                    self._wake.clear()
+        finally:
+            with self._lifecycle_lock:
+                self._running = False
+                connection = self._detach_connection()
+            self._close_serial(connection, alarm_off=True)
 
     def service_once(self):
         """워커의 한 주기: 연결 → 송신 → 수신. 테스트에서 직접 호출할 수 있다."""
@@ -174,15 +185,18 @@ class ArduinoBridge:
             logger.warning("아두이노 연결 실패: port=%s (%s). %d초 후 재시도", self._port, error, RECONNECT_SECONDS)
             self._next_connect_at = self._clock() + RECONNECT_SECONDS
             return
-        if not self._running:
+        with self._lifecycle_lock:
+            accepted = self._running
+            if accepted:
+                self._serial = connection
+                self._reset_link_state()
+        if not accepted:
             # 연결하는 동안 close()가 호출됐다. 열린 포트를 남기지 않는다.
             try:
                 connection.close()
             except Exception:
                 logger.debug("종료 중 연결된 포트 닫기 실패", exc_info=True)
             return
-        self._serial = connection
-        self._reset_link_state()
         logger.info("아두이노 연결됨: port=%s", self._port)
 
     def _reset_link_state(self):
@@ -192,14 +206,29 @@ class ArduinoBridge:
         self._device_alarm = None
         self._co2 = None
 
-    def _drop_connection(self):
+    def _detach_connection(self):
+        """수명 주기 잠금을 잡은 호출자가 포트 소유권을 가져간다."""
         connection, self._serial = self._serial, None
         self._reset_link_state()
+        return connection
+
+    def _close_serial(self, connection, *, alarm_off=False):
         if connection is not None:
             try:
-                connection.close()
+                if alarm_off:
+                    connection.write(b"A0\n")
             except Exception:
-                logger.exception("아두이노 포트 닫기 실패")
+                logger.warning("종료 중 아두이노 경보 해제 실패", exc_info=True)
+            finally:
+                try:
+                    connection.close()
+                except Exception:
+                    logger.exception("아두이노 포트 닫기 실패")
+
+    def _drop_connection(self):
+        with self._lifecycle_lock:
+            connection = self._detach_connection()
+        self._close_serial(connection)
 
     def _send_if_due(self, now: float):
         alarm = self._desired_alarm
@@ -243,6 +272,7 @@ class ArduinoBridge:
         elif line == "BOOT":
             # 재부팅한 장치는 경보가 꺼져 있다. 현재 상태를 바로 다시 보낸다.
             self._sent_alarm = None
+            self._last_ack_at = None
             self._device_alarm = False
             self._co2 = None
         elif line == "ERR:CMD":

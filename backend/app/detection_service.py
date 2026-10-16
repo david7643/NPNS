@@ -43,6 +43,7 @@ RIGHT_EYE = [33, 160, 158, 133, 153, 144]
 
 NO_FACE_RESET_SECONDS = 1.0  # 이 시간 이상 얼굴이 사라지면 과거 시계열 폐기
 FPS_SAMPLE_SIZE = 60
+DETECTION_STOP_JOIN_SECONDS = 5.0
 CALIBRATION_SECONDS = 3.0
 CALIBRATION_MIN_SAMPLES = 15
 EYE_CLOSE_RATIO = 0.72
@@ -389,6 +390,7 @@ class DrowsinessDecisionEngine(LegacyDrowsinessDecisionEngine):
         self.alarm_acknowledged = False
         self.alarm_acknowledged_at = None
         self.previous_emergency = False
+        self.alarm_generation = 0
 
     def acknowledge_alarm(self, now):
         """앱에서 경보를 중지한 사실을 알린다. 반복 요청은 타이머를 초기화하지 않는다."""
@@ -398,6 +400,7 @@ class DrowsinessDecisionEngine(LegacyDrowsinessDecisionEngine):
             self.recovery_started_at = None
 
     def _invalidate_alarm_acknowledgement(self):
+        self.alarm_generation += 1
         self.alarm_acknowledged = False
         self.alarm_acknowledged_at = None
 
@@ -791,18 +794,29 @@ class DetectionSession:
         self._thread: threading.Thread | None = None
         self.latest_result: dict | None = None
         self._alarm_ack_requests = SimpleQueue()
+        self._state_lock = threading.Lock()
+        self._alarm_generation = 0
 
     def acknowledge_alarm(self):
-        """API 스레드는 요청만 넣고, 판정 상태 변경은 카메라 스레드에서 수행한다."""
-        self._alarm_ack_requests.put(time.monotonic())
+        """하드웨어는 즉시 음소거하고, 알려진 위험의 판정 확인은 카메라 스레드에 맡긴다."""
+        with self._state_lock:
+            self._alarm_ack_requests.put((time.monotonic(), self._alarm_generation))
+            get_arduino().clear_alarm()
 
     def _apply_alarm_ack_requests(self, processor):
         while not self._alarm_ack_requests.empty():
-            processor.engine.acknowledge_alarm(self._alarm_ack_requests.get_nowait())
+            requested_at, generation = self._alarm_ack_requests.get_nowait()
+            if generation == processor.engine.alarm_generation:
+                processor.engine.acknowledge_alarm(requested_at)
 
     @property
     def is_running(self) -> bool:
         return self._running
+
+    @property
+    def thread_alive(self) -> bool:
+        worker = self._thread
+        return worker is not None and worker.is_alive()
 
     @property
     def user_id(self) -> int:
@@ -814,19 +828,26 @@ class DetectionSession:
 
     def start(self):
         """백그라운드 스레드에서 감지 루프 시작."""
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._detection_loop, daemon=True)
-        self._thread.start()
+        with self._state_lock:
+            if self._running:
+                return
+            if self.thread_alive:
+                raise RuntimeError("이전 감지 스레드가 종료 중입니다")
+            self._running = True
+            self._thread = threading.Thread(target=self._detection_loop, daemon=True)
+            self._thread.start()
 
     def stop(self):
         """감지 루프 종료."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=5)
-            self._thread = None
-        get_arduino().clear_alarm()  # 감지를 명시적으로 끝내면 경보도 끈다
+        with self._state_lock:
+            self._running = False
+            get_arduino().clear_alarm()
+            worker = self._thread
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=DETECTION_STOP_JOIN_SECONDS)
+            with self._state_lock:
+                if not worker.is_alive() and self._thread is worker:
+                    self._thread = None
 
     def _put_result(self, result: dict):
         """스레드 → async 큐 브릿지."""
@@ -850,25 +871,38 @@ class DetectionSession:
                 while self._running:
                     self._apply_alarm_ack_requests(detector.processor)
                     _, result = detector.read()
-                    arduino = get_arduino()
-                    arduino.update(result)  # 원하는 상태만 바꾸고 바로 반환 (송신은 아두이노 워커)
-                    result["co2_ppm"] = arduino.co2_ppm
-                    result["arduino_responding"] = arduino.responding
-                    if result["alert_event"]:
-                        asyncio.run_coroutine_threadsafe(
-                            _save_log_to_db(
-                                user_id=self._user_id, session_id=self.session_id,
-                                ear_value=result["ear_value"], pred_score=result["pred_score"],
-                                drowsy_level=result["drowsy_level"],
-                            ),
-                            self._loop,
+                    with self._state_lock:
+                        if not self._running:
+                            break  # 종료 전에 시작한 읽기/추론의 늦은 결과는 버린다
+                        self._apply_alarm_ack_requests(detector.processor)
+                        engine = detector.processor.engine
+                        self._alarm_generation = engine.alarm_generation
+                        result["alarm_acknowledged"] = engine.alarm_acknowledged
+                        result["alarm_ack_required"] = (
+                            result["drowsy_level"] in (2, 3) and not engine.alarm_acknowledged
                         )
-                    self._put_result(result)
+                        arduino = get_arduino()
+                        arduino.update(result)
+                        result["co2_ppm"] = arduino.co2_ppm
+                        result["arduino_responding"] = arduino.responding
+                        if result["alert_event"]:
+                            asyncio.run_coroutine_threadsafe(
+                                _save_log_to_db(
+                                    user_id=self._user_id, session_id=self.session_id,
+                                    ear_value=result["ear_value"], pred_score=result["pred_score"],
+                                    drowsy_level=result["drowsy_level"],
+                                ),
+                                self._loop,
+                            )
+                        self._put_result(result)
         except Exception as error:
-            logger.exception("Detection session failed: session=%d", self.session_id)
-            self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
+            with self._state_lock:
+                if self._running:
+                    logger.exception("Detection session failed: session=%d", self.session_id)
+                    self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
         finally:
-            self._running = False
+            with self._state_lock:
+                self._running = False
             # 감지가 멈춰도 아두이노 경보는 유지한다. 앱 중지 확인이나 stop()에서만 끈다.
 
 
@@ -881,8 +915,8 @@ def start_detection(
 ) -> DetectionSession:
     """감지 시작."""
     global _active_session
-    if _active_session and _active_session.is_running:
-        raise RuntimeError("이미 감지가 실행 중입니다")
+    if _active_session and (_active_session.is_running or _active_session.thread_alive):
+        raise RuntimeError("이미 감지가 실행 중이거나 이전 카메라를 정리 중입니다")
     _active_session = DetectionSession(session_id, user_id, loop)
     _active_session.start()
     return _active_session
@@ -893,7 +927,8 @@ def stop_detection():
     global _active_session
     if _active_session:
         _active_session.stop()
-        _active_session = None
+        if not _active_session.thread_alive:
+            _active_session = None
 
 
 def get_active_session() -> DetectionSession | None:
