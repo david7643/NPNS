@@ -25,7 +25,32 @@ IDE에서 `backend/app/main.py`를 직접 실행해도 서버가 시작된다.
 `backend/.env` 또는 프로세스 환경에 `DROWSINESS_MODEL_DIR`를 지정했다면
 그 값이 기본 배포 모델보다 우선한다. 기본 모델을 사용하려면 해당 설정을 제거한다.
 상대 경로는 현재 터미널 위치와 관계없이 `backend/` 기준이다.
-웹캠 번호는 `DROWSINESS_CAMERA_INDEX=0`으로 설정할 수 있다.
+기본 카메라 설정은 `DROWSINESS_CAMERA_INDEX=auto`다.
+Linux에서는 USB 버스에 연결된 영상 장치만 탐색하고 실제 프레임을 수신하는 웹캠을 선택한다.
+프레임을 제공하지 않는 메타데이터 노드는 건너뛰며, USB 웹캠이 없으면 감지를 시작할 수 없다.
+여러 웹캠 중 하나를 선택하려면 `backend/.env`에 `DROWSINESS_CAMERA_INDEX=32`처럼 지정한다.
+Linux의 숫자는 `/dev/video32`의 번호이며, 선택한 장치도 USB 웹캠이어야 한다.
+Windows에서는 USB 웹캠의 OpenCV 번호(예: `0` 또는 `1`)를 지정한다. `auto`의 기본 번호는 `0`이다.
+VS Code에서 `main.py` 실행과 Uvicorn CLI 실행 모두 같은 웹캠 선택 경로를 사용한다.
+웹캠을 연결하고 기존 서버를 완전히 종료한 뒤 다시 실행한다.
+`/health`의 `camera_available`은 장치 열기뿐 아니라 실제 영상 프레임 수신도 확인한다.
+
+### 노트북 실시간 시연 창
+
+`DROWSINESS_PREVIEW_ENABLED=true`가 기본값이다. 노트북의 그래픽 데스크톱에서 서버를 실행하고
+앱에서 감지를 시작하면 해당 노트북에 시연 창이 열린다. Android 앱 변경이나 별도 미리보기 명령은 필요 없다.
+실제 추론에 사용한 USB 웹캠 프레임을 공유하며 카메라를 추가로 열지 않는다.
+영상은 거울처럼 좌우 반전하여 표시하고, 추론 원본은 변경하지 않는다.
+
+- 눈 윤곽, 개인별 보정 진행률, 좌우 EAR, LSTM 점수와 진입 기준
+- 눈 감김 지속시간, 최근 30초의 졸음 사건 수, 정상 회복 시간
+- 위험 단계(0~3), 경보 중지 확인 상태, 세션·카메라 번호, 처리 FPS
+
+Q·Esc·창 닫기는 미리보기만 닫는다. 감지 중지·경보 중지 확인은 기존 앱 조작을 사용한다.
+앱에서 감지를 중지하면 창도 닫히고, 새 감지를 시작하면 다시 열린다.
+느린 화면 표시가 감지 처리를 기다리게 하지 않도록 최신 프레임만 전달하며 GUI는 별도 프로세스에서 실행한다.
+그래픽 환경이 없거나 창 실행에 실패하면 경고 로그를 남기고 감지를 계속한다.
+서버 전용 실행에는 `backend/.env`의 `DROWSINESS_PREVIEW_ENABLED=false`를 사용할 수 있다.
 
 `GET /health`에서 다음을 확인한다.
 
@@ -202,6 +227,14 @@ Content-Type: application/json
 `/sessions/current`, `/report/summary`, `/report/detail/{id}`, `/report/history`에 `distance_meters`가 추가된다.
 리포트의 사건 항목에는 `event_id`, `app_received_at`, `location_measured_at`, `location_accuracy_meters`, `location_status`가 추가된다.
 세션 요약·상세는 `utc_offset_minutes`를 받아 시간대별 집계에 반영한다. 한국 시간은 540이며 생략 시 UTC다.
+
+`/sessions/start`, `/sessions/current`, `/sessions/end`, `/sessions/history`의 세션 시각은
+UTC 오프셋을 명시한 ISO 8601 문자열(`Z`)로 반환한다. SQLite의 기존 UTC 기록은 변경하지 않는다.
+각 세션 응답에는 서버가 계산한 음수가 아닌 정수 `elapsed_seconds`도 포함한다.
+진행 중이면 서버 현재 시각과 시작 시각의 차이이며, 종료된 세션은 종료 시각 기준으로 고정한다.
+앱은 새 운전 타이머를 0초에서 시작하고 `SystemClock.elapsedRealtime()`으로 증가시킨다.
+세션 복구 시에는 `elapsed_seconds`를 기준으로 이어간다. 서버 시작 시각을 휴대폰 현재 시각에서
+직접 빼면 두 기기의 시계 차이만큼 음수나 잘못된 운전 시간이 표시될 수 있다.
 
 앱은 위치·거리 전송 대기를 로컬 DB에 보존하고 네트워크 조건을 충족하면 JobScheduler로 전송한다.
 일시 오류는 지수 간격으로 재시도하며, 인증 만료는 재로그인 후 다시 예약한다. 위치 요청의 400·403·422는 실패로 표시한다.

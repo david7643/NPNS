@@ -20,6 +20,7 @@ from mediapipe.tasks.python import vision
 import joblib
 from app.arduino_bridge import get_arduino
 from app.config import get_settings
+from app.usb_camera import open_webcam
 
 from app.ear_sequence import (
     EarSequenceBuffer, MAX_OBSERVATION_GAP_SECONDS, WINDOW_SIZE, WINDOW_SECONDS, normalize_eye_ear,
@@ -680,6 +681,7 @@ class CameraDetector:
     def __init__(self, camera_index=None):
         self.camera_index = get_settings().DROWSINESS_CAMERA_INDEX if camera_index is None else camera_index
         self.cap = None
+        self._pending_frame = None
         self.landmarker = None
         self.latest_landmarks = None
         self.processor = None
@@ -695,9 +697,7 @@ class CameraDetector:
                 min_tracking_confidence=0.5,
             )
             self.landmarker = vision.FaceLandmarker.create_from_options(options)
-            self.cap = cv2.VideoCapture(self.camera_index)
-            if not self.cap.isOpened():
-                raise RuntimeError(f"카메라 {self.camera_index}를 열 수 없습니다")
+            self.cap, self._pending_frame, self.camera_index = open_webcam(self.camera_index)
             self.processor = DrowsinessProcessor(_lstm_model, _scaler, _model_metadata)
             self.started_at = time.monotonic()
             self.last_timestamp_ms = -1
@@ -709,8 +709,12 @@ class CameraDetector:
             raise
 
     def read(self):
-        ret, frame = self.cap.read()
-        if not ret:
+        if self._pending_frame is not None:
+            ret, frame = True, self._pending_frame
+            self._pending_frame = None
+        else:
+            ret, frame = self.cap.read()
+        if not ret or frame is None or frame.size == 0:
             raise RuntimeError("카메라 프레임을 읽을 수 없습니다")
         now = time.monotonic()
         timestamp = max(self.last_timestamp_ms + 1, int((now - self.started_at) * 1000))
@@ -747,6 +751,7 @@ class CameraDetector:
         self.processor.reset()
 
     def close(self):
+        self._pending_frame = None
         if self.cap is not None:
             self.cap.release()
             self.cap = None
@@ -933,7 +938,9 @@ class DetectionSession:
     def _detection_loop(self):
         """감지·장치 제어·기록 보존을 함께 처리한다."""
         from app.observation_recorder import ObservationRecorder
+        from app.detection_preview import DetectionPreview
 
+        preview = DetectionPreview(get_settings().DROWSINESS_PREVIEW_ENABLED, self.session_id)
         recorder = ObservationRecorder(
             self.session_id, self._user_id, self._account_key, self._write_record
         )
@@ -946,7 +953,7 @@ class DetectionSession:
                         self._apply_alarm_ack_requests(detector.processor)
 
                     # 추론 중에도 API가 장치 경보를 중지할 수 있도록 잠금을 놓는다.
-                    _, result = detector.read()
+                    frame, result = detector.read()
 
                     with self._state_lock:
                         if not self._running:
@@ -987,6 +994,10 @@ class DetectionSession:
                         result["co2_ppm"] = arduino.co2_ppm
                         result["arduino_responding"] = arduino.responding
                         self._put_result(result)
+                    preview.show(
+                        frame, {**result, "camera_index": getattr(detector, "camera_index", None)},
+                        getattr(detector, "latest_landmarks", None),
+                    )
         except Exception as error:
             with self._state_lock:
                 if self._running:
@@ -999,8 +1010,11 @@ class DetectionSession:
                 recorder.finish()
                 self._flush_journal_records()
             finally:
-                with self._state_lock:
-                    self._running = False
+                try:
+                    preview.close()
+                finally:
+                    with self._state_lock:
+                        self._running = False
             # 오류 종료 시 기존 장치 경보를 유지한다.
             # 명시적 stop() 또는 현재 위험의 중지 확인에서만 해제한다.
 
@@ -1045,8 +1059,9 @@ def camera_available() -> bool:
     active = get_active_session()
     if active is not None and active.is_running:
         return True
-    camera = cv2.VideoCapture(get_settings().DROWSINESS_CAMERA_INDEX)
     try:
-        return camera.isOpened()
-    finally:
-        camera.release()
+        camera, _, _ = open_webcam(get_settings().DROWSINESS_CAMERA_INDEX)
+    except RuntimeError:
+        return False
+    camera.release()
+    return True

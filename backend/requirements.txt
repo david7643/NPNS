@@ -26,6 +26,7 @@ joblib
 numpy
 scikit-learn
 matplotlib
+Pillow
 
 # Arduino alarm (USB serial)
 pyserial==3.5

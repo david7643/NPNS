@@ -16,11 +16,15 @@ import numpy as np
 import csv
 import time
 import os
+import sys
 import uuid
 
 # 모델 파일 경로
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 MODEL_PATH = os.path.join(SCRIPT_DIR, "..", "backend", "ai_models", "face_landmarker.task")
+sys.path.insert(0, os.path.join(SCRIPT_DIR, "..", "backend"))
+from app.config import get_settings
+from app.usb_camera import open_webcam
 
 # MediaPipe 기준 눈 랜드마크 인덱스
 LEFT_EYE = [362, 385, 387, 263, 373, 380]
@@ -76,9 +80,10 @@ def collect_data(label, duration_sec=60, filename="ear_sessions.csv"):
     )
     landmarker = vision.FaceLandmarker.create_from_options(options)
 
-    cap = cv2.VideoCapture(0)
-    if not cap.isOpened():
-        print("❌ 웹캠을 열 수 없습니다!")
+    try:
+        cap, _, _ = open_webcam(get_settings().DROWSINESS_CAMERA_INDEX)
+    except RuntimeError as error:
+        print(f"❌ {error}")
         landmarker.close()
         return
 

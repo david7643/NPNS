@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 import numpy as np
 
 from app import detection_service as detection
+from app import usb_camera
 
 
 class ApplicationProcessorTests(unittest.TestCase):
@@ -79,14 +80,41 @@ class ApplicationProcessorTests(unittest.TestCase):
 
 
 class CameraLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        context = patch.object(usb_camera, "usb_camera_indices", return_value=[0])
+        context.start()
+        self.addCleanup(context.stop)
+
     def test_health_probe_uses_the_configured_camera(self):
         cap = Mock()
         cap.isOpened.return_value = True
+        cap.read.return_value = (True, np.zeros((16, 16, 3), dtype=np.uint8))
         with patch.object(detection, "get_active_session", return_value=None), \
+             patch.object(usb_camera, "usb_camera_indices", return_value=[2]), \
              patch.object(detection, "get_settings", return_value=SimpleNamespace(DROWSINESS_CAMERA_INDEX=2)), \
              patch.object(detection.cv2, "VideoCapture", return_value=cap) as capture:
             self.assertTrue(detection.camera_available())
         capture.assert_called_once_with(2)
+        cap.release.assert_called_once()
+
+    def test_open_camera_without_a_frame_is_not_ready(self):
+        for frame in (None, np.empty((0, 0, 3), dtype=np.uint8)):
+            with self.subTest(frame=frame):
+                cap = Mock()
+                cap.isOpened.return_value = True
+                cap.read.return_value = (True, frame)
+                with patch.object(detection, "get_active_session", return_value=None), \
+                     patch.object(detection.cv2, "VideoCapture", return_value=cap):
+                    self.assertFalse(detection.camera_available())
+                cap.release.assert_called_once()
+
+    def test_failed_frame_read_is_not_ready(self):
+        cap = Mock()
+        cap.isOpened.return_value = True
+        cap.read.return_value = (False, None)
+        with patch.object(detection, "get_active_session", return_value=None), \
+             patch.object(detection.cv2, "VideoCapture", return_value=cap):
+            self.assertFalse(detection.camera_available())
         cap.release.assert_called_once()
 
     def test_camera_failure_closes_landmarker_and_capture(self):

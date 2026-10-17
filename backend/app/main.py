@@ -2,8 +2,14 @@
 
 from contextlib import asynccontextmanager
 import asyncio
+import os
 from pathlib import Path
 import sys
+
+# Linux에서 MediaPipe의 CPU 프로파일러 타이머가 프로세스를 종료하는 문제를 우회한다.
+# TensorFlow/MediaPipe가 로드되기 전에 설정해야 한다 (mediapipe#6375).
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("CPUPROFILE_FREQUENCY", "0")
 
 # IDE에서 파일을 직접 실행해도 backend 아래의 app 패키지를 찾는다.
 BACKEND_DIR = Path(__file__).resolve().parents[1]

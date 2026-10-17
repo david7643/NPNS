@@ -67,9 +67,18 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
 일반 서버 실행은 `personal-ear-v1` 모델과 v7 단계 로직을 사용합니다. 모델의 촬영 검증 기록은 v4 기준이며 현재 v7의 실사용 성능을 뜻하지 않습니다.
 배포용 모델·스케일러·메타데이터는 `backend/ai_models/released/personal-ear-v1/`에 있습니다.
-`DROWSINESS_MODEL_DIR`를 설정한 경우 해당 모델을 우선하며, 카메라는 서버에 직결된 웹캠을 사용합니다.
+`DROWSINESS_MODEL_DIR`를 설정한 경우 해당 모델을 우선하며, 카메라는 서버에 USB로 연결한 웹캠을 사용합니다.
+Linux에서는 기본 설정 `DROWSINESS_CAMERA_INDEX=auto`로 프레임을 수신할 수 있는 USB 웹캠을 자동 선택합니다.
+여러 USB 웹캠 중 하나를 지정하려면 해당 `/dev/video번호`를 설정하고, Windows에서는 USB 웹캠의 OpenCV 번호를 지정합니다.
 앱의 기존 `/detection/start`와 WebSocket 결과 경로에 개선된 처리가 연결되어 있습니다.
 백엔드와 `realtime_detect.py`는 동일한 처리기를 사용합니다.
+
+앱에서 졸음 감지를 시작하면 백엔드를 실행 중인 노트북에 실시간 시연 창이 자동으로 열립니다.
+USB 웹캠 영상 위의 눈 윤곽과 함께 개인별 보정 진행률, 좌우 EAR, LSTM 점수, 눈 감김 시간,
+졸음 위험 단계(0~3), 처리 FPS를 표시합니다. Q·Esc 또는 창 닫기는 시연 창만 닫으며,
+감지와 경보는 앱에서 제어합니다. 앱에서 감지를 중지하면 시연 창도 종료됩니다.
+화면 표시를 끄려면 `backend/.env`에 `DROWSINESS_PREVIEW_ENABLED=false`를 설정하고 서버를 다시 실행하세요.
+시연 창은 노트북의 그래픽 데스크톱 세션에서 서버를 실행할 때 표시됩니다.
 
 실행·보정 화면·경고·복구와 Android Kotlin 앱 연결 계약은 [앱 적용 안내](backend/APPLICATION_INTEGRATION.md)를 참고하세요.
 추가 보완한 누락 기록 복구·서비스 경보·SMS 정책·GPS 동기화·관측 통계는 [1~6번 개선 결과](NSND_1-6_개선결과_2026-10-16.md)에 정리했습니다.

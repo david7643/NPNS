@@ -1,9 +1,9 @@
 """DrowsyGuard Pydantic 스키마 정의."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal
 
-from pydantic import AwareDatetime, BaseModel, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, Field, computed_field, field_validator, model_validator
 
 
 # ── Auth 관련 스키마 ──
@@ -53,35 +53,49 @@ class ContactUpdate(BaseModel):
 # ── Session 관련 스키마 ──
 
 
-class SessionStartResponse(BaseModel):
+class _SessionTimeResponse(BaseModel):
+    """SQLite의 UTC 시각을 명시하고 같은 서버 시계로 경과 시간을 계산한다."""
+
+    started_at: datetime
+
+    model_config = {"from_attributes": True}
+
+    @field_validator("started_at", "ended_at", check_fields=False)
+    @classmethod
+    def normalize_utc(cls, value):
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
+
+    @computed_field
+    @property
+    def elapsed_seconds(self) -> int:
+        end = getattr(self, "ended_at", None) or datetime.now(timezone.utc)
+        return max(0, int((end - self.started_at).total_seconds()))
+
+
+class SessionStartResponse(_SessionTimeResponse):
     """세션 시작 응답."""
 
     session_id: int
-    started_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
-class SessionEndResponse(BaseModel):
+class SessionEndResponse(_SessionTimeResponse):
     """세션 종료 응답."""
 
     session_id: int
-    started_at: datetime
     ended_at: datetime
 
-    model_config = {"from_attributes": True}
 
-
-class SessionResponse(BaseModel):
+class SessionResponse(_SessionTimeResponse):
     """세션 상세 응답."""
 
     id: int
     user_id: int
-    started_at: datetime
     ended_at: datetime | None
     distance_meters: float = 0.0
-
-    model_config = {"from_attributes": True}
 
 
 class SessionEndRequest(BaseModel):

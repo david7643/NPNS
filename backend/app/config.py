@@ -2,6 +2,7 @@
 
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic_settings import BaseSettings
 from pydantic import field_validator
@@ -17,7 +18,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "sqlite+aiosqlite:///./drowsyguard.db"
     # 상대 경로는 app/ 기준이 아닌 backend/ 기준으로 해석한다.
     DROWSINESS_MODEL_DIR: str | None = None
-    DROWSINESS_CAMERA_INDEX: int = 0
+    # Linux에서는 프레임을 읽을 수 있는 USB 웹캠을 자동 선택한다.
+    DROWSINESS_CAMERA_INDEX: int | Literal["auto"] = "auto"
+    # 감지 시작 시 서버 노트북에 카메라 영상과 판정 지표를 표시한다.
+    DROWSINESS_PREVIEW_ENABLED: bool = True
     # 아두이노 경보기 포트 (예: COM3, /dev/ttyACM0). 비워두면 사용하지 않는다.
     ARDUINO_PORT: str | None = None
     ARDUINO_BAUD: int = 9600
