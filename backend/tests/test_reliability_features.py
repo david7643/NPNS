@@ -109,24 +109,79 @@ class ReliabilityApiTests(IsolatedAsyncioTestCase):
             self.assertEqual([r["stage"] for r in late["events"]],[3])
             self.assertIsNone(late["events"][0]["latitude"])
 
-    async def test_sms_is_opt_in_and_last_contact_delete_disables_it_atomically(self):
+    async def test_sms_is_mandatory_and_last_contact_cannot_be_deleted(self):
+        owner = SimpleNamespace(id=7)
         async with self.factory() as db:
-            self.assertFalse((await contacts.get_sms_settings(self.user,db))["enabled"])
-            with self.assertRaises(HTTPException) as error:
-                await contacts.update_sms_settings(SmsSettingsUpdate(enabled=True),self.user,db)
-            self.assertEqual(error.exception.status_code,409)
+            empty = await contacts.get_sms_settings(owner,db)
+            self.assertTrue(empty["automatic_sms_required"])
+            self.assertFalse(empty["enabled"])
+            with self.assertRaises(HTTPException):
+                await contacts.update_sms_settings(SmsSettingsUpdate(enabled=True),owner,db)
             await db.rollback()
-            # Rollback expires attached users; use a fresh owner stub for subsequent calls.
-            owner = SimpleNamespace(id=7)
             contact = await contacts.create_contact(ContactCreate(name="test",phone="01012345678",message="fixture"),owner,db)
-            self.assertFalse((await contacts.get_sms_settings(owner,db))["enabled"])
-            enabled = await contacts.update_sms_settings(SmsSettingsUpdate(enabled=True),owner,db)
-            self.assertTrue(enabled["enabled"])
-            await contacts.delete_contact(contact.id,owner,db)
+            contact_id = contact.id
+            self.assertTrue((await contacts.get_sms_settings(owner,db))["enabled"])
+            with self.assertRaises(HTTPException) as error:
+                await contacts.update_sms_settings(SmsSettingsUpdate(enabled=False),owner,db)
+            self.assertEqual(error.exception.status_code,409)
+            with self.assertRaises(HTTPException) as error:
+                await contacts.delete_contact(contact_id,owner,db)
+            self.assertEqual(error.exception.status_code,409)
         async with self.factory() as db:
-            self.assertFalse(await db.scalar(select(User.auto_sms_enabled).where(User.id==7)))
-            snapshot = await contacts.get_sms_settings(SimpleNamespace(id=7),db)
-            self.assertEqual(snapshot["contact_count"],0)
+            snapshot = await contacts.get_sms_settings(owner,db)
+            self.assertEqual(snapshot["contact_count"],1)
+            self.assertTrue(snapshot["enabled"])
+
+    async def test_two_contacts_can_be_reduced_to_one_and_last_contact_can_be_edited(self):
+        owner = SimpleNamespace(id=7)
+        async with self.factory() as db:
+            first = await contacts.create_contact(ContactCreate(name="first",phone="01011112222",message="fixture"),owner,db)
+            second = await contacts.create_contact(ContactCreate(name="second",phone="01033334444",message="fixture"),owner,db)
+            await contacts.delete_contact(first.id,owner,db)
+            snapshot = await contacts.get_sms_settings(owner,db)
+            self.assertEqual(snapshot["contact_count"],1)
+            saved = await contacts.update_contact(second.id,
+                contacts.SavedContactUpdate(name="replacement",phone="01055556666",message="updated"),owner,db)
+            self.assertEqual(saved.phone,"01055556666")
+            self.assertTrue((await contacts.get_sms_settings(owner,db))["enabled"])
+
+    async def test_legacy_disabled_flag_does_not_disable_automatic_sms(self):
+        owner = SimpleNamespace(id=7)
+        async with self.factory() as db:
+            await contacts.create_contact(ContactCreate(name="first",phone="01011112222",message="fixture"),owner,db)
+            user = await db.get(User,7)
+            user.auto_sms_enabled = False
+            await db.commit()
+            self.assertTrue((await contacts.get_sms_settings(owner,db))["enabled"])
+
+    async def test_concurrent_deletes_cannot_remove_both_remaining_contacts(self):
+        # Separate connections to a file DB exercise SQLite write serialization.
+        engine = create_async_engine("sqlite+aiosqlite:///"+str(Path(self.temp.name)/"contacts.db"))
+        factory = async_sessionmaker(engine,expire_on_commit=False)
+        owner = SimpleNamespace(id=7)
+        try:
+            async with engine.begin() as connection:
+                await connection.run_sync(Base.metadata.create_all)
+            async with factory() as db:
+                db.add(User(id=7,username="race",name="race",hashed_password="fixture"))
+                await db.commit()
+                one = await contacts.create_contact(ContactCreate(name="one",phone="01011112222",message="fixture"),owner,db)
+                two = await contacts.create_contact(ContactCreate(name="two",phone="01033334444",message="fixture"),owner,db)
+                ids = [one.id,two.id]
+            async def remove(contact_id):
+                async with factory() as db:
+                    try:
+                        await contacts.delete_contact(contact_id,owner,db)
+                        return 204
+                    except HTTPException as error:
+                        await db.rollback()
+                        return error.status_code
+            outcomes = await asyncio.gather(*(remove(contact_id) for contact_id in ids))
+            self.assertEqual(sorted(outcomes),[204,409])
+            async with factory() as db:
+                self.assertEqual((await contacts.get_sms_settings(owner,db))["contact_count"],1)
+        finally:
+            await engine.dispose()
 
     async def test_other_accounts_cannot_delete_or_enable_using_owners_contact(self):
         async with self.factory() as db:

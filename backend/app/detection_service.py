@@ -18,6 +18,7 @@ import numpy as np
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 import joblib
+from app.arduino_bridge import get_arduino
 from app.config import get_settings
 
 from app.ear_sequence import (
@@ -44,6 +45,7 @@ RIGHT_EYE = [33, 160, 158, 133, 153, 144]
 
 NO_FACE_RESET_SECONDS = 1.0  # 이 시간 이상 얼굴이 사라지면 과거 시계열 폐기
 FPS_SAMPLE_SIZE = 60
+DETECTION_STOP_JOIN_SECONDS = 5.0
 CALIBRATION_SECONDS = 3.0
 CALIBRATION_MIN_SAMPLES = 15
 EYE_CLOSE_RATIO = 0.72
@@ -390,6 +392,7 @@ class DrowsinessDecisionEngine(LegacyDrowsinessDecisionEngine):
         self.alarm_acknowledged = False
         self.alarm_acknowledged_at = None
         self.previous_emergency = False
+        self.alarm_generation = 0
 
     def acknowledge_alarm(self, now):
         """앱에서 경보를 중지한 사실을 알린다. 반복 요청은 타이머를 초기화하지 않는다."""
@@ -399,6 +402,7 @@ class DrowsinessDecisionEngine(LegacyDrowsinessDecisionEngine):
             self.recovery_started_at = None
 
     def _invalidate_alarm_acknowledgement(self):
+        self.alarm_generation += 1
         self.alarm_acknowledged = False
         self.alarm_acknowledged_at = None
 
@@ -801,6 +805,8 @@ class DetectionSession:
         self._thread: threading.Thread | None = None
         self.latest_result: dict | None = None
         self._alarm_ack_requests = SimpleQueue()
+        self._state_lock = threading.Lock()
+        self._alarm_generation = 0
         self._event_id = None
         self._detected_at = None
         self._episode_id = None
@@ -832,13 +838,21 @@ class DetectionSession:
                 "storage_error": self._storage_error}
 
     def acknowledge_alarm(self, risk_id=None):
-        """API 스레드는 요청만 넣고, 판정 상태 변경은 카메라 스레드에서 수행한다."""
-        self._alarm_ack_requests.put((time.monotonic(), risk_id or self._risk_id))
+        """현재 위험에 대해서만 장치 음소거와 판정 확인을 요청한다."""
+        with self._state_lock:
+            target = self._risk_id if risk_id is None else risk_id
+            if target != self._risk_id:
+                return
+            self._alarm_ack_requests.put(
+                (time.monotonic(), target, self._alarm_generation)
+            )
+            get_arduino().clear_alarm()
 
     def _apply_alarm_ack_requests(self, processor):
         while not self._alarm_ack_requests.empty():
-            requested_at, risk_id = self._alarm_ack_requests.get_nowait()
-            if risk_id == self._risk_id:
+            requested_at, risk_id, generation = self._alarm_ack_requests.get_nowait()
+            if (risk_id == self._risk_id
+                    and generation == processor.engine.alarm_generation):
                 processor.engine.acknowledge_alarm(requested_at)
 
     def _write_record(self, payload):
@@ -866,6 +880,11 @@ class DetectionSession:
         return self._running
 
     @property
+    def thread_alive(self) -> bool:
+        worker = self._thread
+        return worker is not None and worker.is_alive()
+
+    @property
     def user_id(self) -> int:
         return self._user_id
 
@@ -875,18 +894,26 @@ class DetectionSession:
 
     def start(self):
         """백그라운드 스레드에서 감지 루프 시작."""
-        if self._running:
-            return
-        self._running = True
-        self._thread = threading.Thread(target=self._detection_loop, daemon=True)
-        self._thread.start()
+        with self._state_lock:
+            if self._running:
+                return
+            if self.thread_alive:
+                raise RuntimeError("이전 감지 스레드가 종료 중입니다")
+            self._running = True
+            self._thread = threading.Thread(target=self._detection_loop, daemon=True)
+            self._thread.start()
 
     def stop(self):
         """감지 루프 종료."""
-        self._running = False
-        if self._thread:
-            self._thread.join(timeout=5)
-            self._thread = None
+        with self._state_lock:
+            self._running = False
+            get_arduino().clear_alarm()
+            worker = self._thread
+        if worker and worker is not threading.current_thread():
+            worker.join(timeout=DETECTION_STOP_JOIN_SECONDS)
+            with self._state_lock:
+                if not worker.is_alive() and self._thread is worker:
+                    self._thread = None
 
     def _put_result(self, result: dict):
         """스레드 → async 큐 브릿지."""
@@ -904,31 +931,78 @@ class DetectionSession:
         self._loop.call_soon_threadsafe(enqueue_latest)
 
     def _detection_loop(self):
-        """공통 웹캠 처리기의 결과를 앱에 전송하고 경고 발생을 기록한다."""
+        """감지·장치 제어·기록 보존을 함께 처리한다."""
         from app.observation_recorder import ObservationRecorder
-        recorder = ObservationRecorder(self.session_id, self._user_id, self._account_key, self._write_record)
+
+        recorder = ObservationRecorder(
+            self.session_id, self._user_id, self._account_key, self._write_record
+        )
         try:
             with CameraDetector() as detector:
                 while self._running:
-                    self._apply_alarm_ack_requests(detector.processor)
+                    with self._state_lock:
+                        if not self._running:
+                            break
+                        self._apply_alarm_ack_requests(detector.processor)
+
+                    # 추론 중에도 API가 장치 경보를 중지할 수 있도록 잠금을 놓는다.
                     _, result = detector.read()
-                    result = self.identify_result(result)
+
+                    with self._state_lock:
+                        if not self._running:
+                            break
+                        result = self.identify_result(result)
+                        self._apply_alarm_ack_requests(detector.processor)
+                        self._alarm_generation = detector.processor.engine.alarm_generation
+
+                    # 디스크 쓰기 중에도 장치 중지 요청을 막지 않는다.
                     if result["alert_event"]:
-                        self._write_record(dict(kind="event", id=self._event_id, episode_id=self._episode_id,
-                            user_id=self._user_id, session_id=self.session_id, account_key=self._account_key,
-                            ear_value=result["ear_value"], pred_score=result["pred_score"], level=result["drowsy_level"],
-                            timestamp=self._detected_at.replace(tzinfo=None).isoformat()))
+                        self._write_record(dict(
+                            kind="event", id=self._event_id,
+                            episode_id=self._episode_id,
+                            user_id=self._user_id, session_id=self.session_id,
+                            account_key=self._account_key,
+                            ear_value=result["ear_value"],
+                            pred_score=result["pred_score"],
+                            level=result["drowsy_level"],
+                            timestamp=self._detected_at.replace(tzinfo=None).isoformat(),
+                        ))
                     recorder.accept(result, datetime.now(timezone.utc), time.monotonic())
                     self._flush_journal_records()
                     result["storage_error"] = self._storage_error
-                    self._put_result(result)
+
+                    with self._state_lock:
+                        if not self._running:
+                            break
+                        self._apply_alarm_ack_requests(detector.processor)
+                        engine = detector.processor.engine
+                        self._alarm_generation = engine.alarm_generation
+                        result["alarm_acknowledged"] = engine.alarm_acknowledged
+                        result["alarm_ack_required"] = (
+                            result["drowsy_level"] in (2, 3)
+                            and not engine.alarm_acknowledged
+                        )
+                        arduino = get_arduino()
+                        arduino.update(result)
+                        result["co2_ppm"] = arduino.co2_ppm
+                        result["arduino_responding"] = arduino.responding
+                        self._put_result(result)
         except Exception as error:
-            logger.exception("Detection session failed: session=%d", self.session_id)
-            self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
+            with self._state_lock:
+                if self._running:
+                    logger.exception("Detection session failed: session=%d", self.session_id)
+                    self._put_result({
+                        **model_runtime_info(), "state": "ERROR", "error": str(error)
+                    })
         finally:
-            recorder.finish()
-            self._flush_journal_records()
-            self._running = False
+            try:
+                recorder.finish()
+                self._flush_journal_records()
+            finally:
+                with self._state_lock:
+                    self._running = False
+            # 오류 종료 시 기존 장치 경보를 유지한다.
+            # 명시적 stop() 또는 현재 위험의 중지 확인에서만 해제한다.
 
 
 # ── 활성 세션 관리 (카메라 1대 → 세션 1개) ──
@@ -940,8 +1014,10 @@ def start_detection(
 ) -> DetectionSession:
     """감지 시작."""
     global _active_session
-    if _active_session and _active_session.is_running:
-        raise RuntimeError("이미 감지가 실행 중입니다")
+    if _active_session and (
+        _active_session.is_running or _active_session.thread_alive
+    ):
+        raise RuntimeError("이미 감지가 실행 중이거나 이전 카메라를 정리 중입니다")
     _active_session = DetectionSession(session_id, user_id, loop, account_key)
     _active_session.start()
     return _active_session
@@ -952,7 +1028,8 @@ def stop_detection():
     global _active_session
     if _active_session:
         _active_session.stop()
-        _active_session = None
+        if not _active_session.thread_alive:
+            _active_session = None
 
 
 def get_active_session() -> DetectionSession | None:

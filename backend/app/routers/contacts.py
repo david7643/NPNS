@@ -1,7 +1,7 @@
 """긴급 연락처 CRUD 라우터."""
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -22,9 +22,10 @@ async def lock_contact_settings(db, user_id):
 
 
 async def settings_snapshot(db, user_id):
-    enabled = (await db.execute(select(User.auto_sms_enabled).where(User.id == user_id))).scalar_one()
     contacts = (await db.execute(select(Contact).where(Contact.user_id == user_id).order_by(Contact.id))).scalars().all()
-    return {"enabled": bool(enabled and contacts), "contact_count": len(contacts),
+    # Keep the old response shape, but an old opt-out flag no longer controls SMS.
+    return {"enabled": bool(contacts), "automatic_sms_required": True,
+            "minimum_contacts": 1, "contact_count": len(contacts),
             "contacts": [ContactResponse.model_validate(contact) for contact in contacts]}
 
 
@@ -37,10 +38,12 @@ async def get_sms_settings(current_user: User = Depends(get_current_user), db: A
 async def update_sms_settings(body: SmsSettingsUpdate, current_user: User = Depends(get_current_user),
                               db: AsyncSession = Depends(get_db)):
     await lock_contact_settings(db, current_user.id)
+    if not body.enabled:
+        raise HTTPException(status_code=409, detail="3단계 위험 SMS는 필수 자동 발송이며 끌 수 없습니다")
     snapshot = await settings_snapshot(db, current_user.id)
-    if body.enabled and not snapshot["contact_count"]:
-        raise HTTPException(status_code=409, detail="자동 SMS를 켜려면 연락처를 한 명 이상 등록해주세요")
-    await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=body.enabled))
+    if not snapshot["contact_count"]:
+        raise HTTPException(status_code=409, detail="자동 SMS를 보내려면 연락처를 한 명 이상 등록해주세요")
+    await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=True))
     await db.commit()
     return await settings_snapshot(db, current_user.id)
 
@@ -77,6 +80,7 @@ async def create_contact(
         message=body.message.strip(),
     )
     db.add(contact)
+    await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=True))
     await db.commit()
     await db.refresh(contact)
     return contact
@@ -128,8 +132,8 @@ async def delete_contact(
     if contact is None:
         raise HTTPException(status_code=404, detail="연락처를 찾을 수 없습니다")
 
+    remaining = await db.scalar(select(func.count(Contact.id)).where(Contact.user_id == current_user.id))
+    if remaining <= 1:
+        raise HTTPException(status_code=409, detail="비상 연락처는 최소 1개를 유지해야 하므로 마지막 연락처는 삭제할 수 없습니다")
     await db.delete(contact)
-    await db.flush()
-    if not (await settings_snapshot(db, current_user.id))["contact_count"]:
-        await db.execute(update(User).where(User.id == current_user.id).values(auto_sms_enabled=False))
     await db.commit()
