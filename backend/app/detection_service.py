@@ -9,6 +9,8 @@ import threading
 import time
 from queue import SimpleQueue
 from collections import deque
+from datetime import datetime, timezone
+from uuid import uuid4
 
 import cv2
 import mediapipe as mp_lib
@@ -529,6 +531,10 @@ class DrowsinessDecisionEngine(LegacyDrowsinessDecisionEngine):
             self.transition_reason = "alarm_acknowledged_and_recovered"
         elif reopened and self.current_level == 1 and recovery_seconds >= LEVEL_ONE_RECOVERY_SECONDS:
             self.current_level = 0
+            self.event_times.clear()
+            self.event_registered = False
+            self.interrupt_evidence()
+            recovery_seconds = 0.0
             self.transition_reason = "level_1_recovered"
 
         return {
@@ -648,6 +654,7 @@ class DrowsinessProcessor:
             "left_close_threshold": round(left_threshold, 4) if left_threshold is not None else None,
             "right_close_threshold": round(right_threshold, 4) if right_threshold is not None else None,
             "eyes_closed": decision["eyes_closed"],
+            "episode_active": bool(self.engine.event_registered),
             "eye_closed_seconds": round(decision["closed_seconds"], 3),
             "model_eye_support": decision["model_eye_support"],
             **{key: decision.get(key, default) for key, default in {
@@ -759,6 +766,8 @@ async def _save_log_to_db(
     drowsy_level: int,
     latitude: float | None = None,
     longitude: float | None = None,
+    event_id: str | None = None,
+    detected_at: datetime | None = None,
 ):
     """감지 로그를 DB에 비동기로 저장."""
     from app.database import async_session
@@ -774,6 +783,8 @@ async def _save_log_to_db(
                 drowsy_level=drowsy_level,
                 latitude=latitude,
                 longitude=longitude,
+                event_id=event_id,
+                timestamp=detected_at or datetime.now(timezone.utc),
             )
             db.add(log)
             await db.commit()
@@ -785,7 +796,7 @@ async def _save_log_to_db(
 class DetectionSession:
     """하나의 감지 세션 — 카메라 루프를 스레드로 실행."""
 
-    def __init__(self, session_id: int, user_id: int, loop: asyncio.AbstractEventLoop):
+    def __init__(self, session_id: int, user_id: int, loop: asyncio.AbstractEventLoop, account_key=None):
         self.session_id = session_id
         self._user_id = user_id
         self._loop = loop
@@ -796,18 +807,73 @@ class DetectionSession:
         self._alarm_ack_requests = SimpleQueue()
         self._state_lock = threading.Lock()
         self._alarm_generation = 0
+        self._event_id = None
+        self._detected_at = None
+        self._episode_id = None
+        self._risk_id = None
+        self._previous_emergency = False
+        self._account_key = account_key
+        self._undurable = {}
+        self._storage_error = None
+        self._journal_retry_at = 0.0
 
-    def acknowledge_alarm(self):
-        """하드웨어는 즉시 음소거하고, 알려진 위험의 판정 확인은 카메라 스레드에 맡긴다."""
+    def identify_result(self, result):
+        """같은 위험 상태의 후속 프레임에도 ID를 유지해 첫 프레임 유실에 대응한다."""
+        new_episode = bool(result.get("new_drowsiness_event"))
+        emergency = bool(result.get("emergency_condition"))
+        if new_episode or (result.get("alert_event") and self._episode_id is None):
+            self._episode_id = str(uuid4())
+        if new_episode or result.get("alert_event") or (emergency and not self._previous_emergency):
+            self._risk_id = str(uuid4())
+        self._previous_emergency = emergency
+        if result.get("alert_event"):
+            self._event_id = str(uuid4())
+            self._detected_at = datetime.now(timezone.utc)
+        elif result.get("observation_valid") and result.get("drowsy_level") == 0:
+            self._event_id = self._detected_at = None
+            self._episode_id = self._risk_id = None
+        return {**result, "event_id": self._event_id,
+                "detected_at": self._detected_at.isoformat() if self._detected_at else None,
+                "episode_id": self._episode_id, "risk_id": self._risk_id,
+                "storage_error": self._storage_error}
+
+    def acknowledge_alarm(self, risk_id=None):
+        """현재 위험에 대해서만 장치 음소거와 판정 확인을 요청한다."""
         with self._state_lock:
-            self._alarm_ack_requests.put((time.monotonic(), self._alarm_generation))
+            target = self._risk_id if risk_id is None else risk_id
+            if target != self._risk_id:
+                return
+            self._alarm_ack_requests.put(
+                (time.monotonic(), target, self._alarm_generation)
+            )
             get_arduino().clear_alarm()
 
     def _apply_alarm_ack_requests(self, processor):
         while not self._alarm_ack_requests.empty():
-            requested_at, generation = self._alarm_ack_requests.get_nowait()
-            if generation == processor.engine.alarm_generation:
+            requested_at, risk_id, generation = self._alarm_ack_requests.get_nowait()
+            if (risk_id == self._risk_id
+                    and generation == processor.engine.alarm_generation):
                 processor.engine.acknowledge_alarm(requested_at)
+
+    def _write_record(self, payload):
+        self._undurable[payload["kind"] + ":" + payload["id"]] = dict(payload)
+        self._flush_journal_records()
+
+    def _flush_journal_records(self):
+        if time.monotonic() < self._journal_retry_at:
+            return
+        from app.record_journal import get_journal
+        try:
+            journal = get_journal()
+            for key, payload in list(self._undurable.items()):
+                journal.put(payload)
+                del self._undurable[key]
+            self._storage_error = ("서버 DB 저장 대기 · 기록은 디스크 일지에 보존되어 자동 재시도합니다."
+                                   if journal.last_error else None)
+        except Exception:
+            self._storage_error = "기록을 디스크에 보존하지 못했습니다. 서버 저장 장치를 확인해주세요."
+            self._journal_retry_at = time.monotonic() + 5
+            logger.exception("감지 기록 일지 저장 실패 — 경보는 계속 처리합니다")
 
     @property
     def is_running(self) -> bool:
@@ -865,45 +931,78 @@ class DetectionSession:
         self._loop.call_soon_threadsafe(enqueue_latest)
 
     def _detection_loop(self):
-        """공통 웹캠 처리기의 결과를 앱에 전송하고 경고 발생을 기록한다."""
+        """감지·장치 제어·기록 보존을 함께 처리한다."""
+        from app.observation_recorder import ObservationRecorder
+
+        recorder = ObservationRecorder(
+            self.session_id, self._user_id, self._account_key, self._write_record
+        )
         try:
             with CameraDetector() as detector:
                 while self._running:
-                    self._apply_alarm_ack_requests(detector.processor)
-                    _, result = detector.read()
                     with self._state_lock:
                         if not self._running:
-                            break  # 종료 전에 시작한 읽기/추론의 늦은 결과는 버린다
+                            break
+                        self._apply_alarm_ack_requests(detector.processor)
+
+                    # 추론 중에도 API가 장치 경보를 중지할 수 있도록 잠금을 놓는다.
+                    _, result = detector.read()
+
+                    with self._state_lock:
+                        if not self._running:
+                            break
+                        result = self.identify_result(result)
+                        self._apply_alarm_ack_requests(detector.processor)
+                        self._alarm_generation = detector.processor.engine.alarm_generation
+
+                    # 디스크 쓰기 중에도 장치 중지 요청을 막지 않는다.
+                    if result["alert_event"]:
+                        self._write_record(dict(
+                            kind="event", id=self._event_id,
+                            episode_id=self._episode_id,
+                            user_id=self._user_id, session_id=self.session_id,
+                            account_key=self._account_key,
+                            ear_value=result["ear_value"],
+                            pred_score=result["pred_score"],
+                            level=result["drowsy_level"],
+                            timestamp=self._detected_at.replace(tzinfo=None).isoformat(),
+                        ))
+                    recorder.accept(result, datetime.now(timezone.utc), time.monotonic())
+                    self._flush_journal_records()
+                    result["storage_error"] = self._storage_error
+
+                    with self._state_lock:
+                        if not self._running:
+                            break
                         self._apply_alarm_ack_requests(detector.processor)
                         engine = detector.processor.engine
                         self._alarm_generation = engine.alarm_generation
                         result["alarm_acknowledged"] = engine.alarm_acknowledged
                         result["alarm_ack_required"] = (
-                            result["drowsy_level"] in (2, 3) and not engine.alarm_acknowledged
+                            result["drowsy_level"] in (2, 3)
+                            and not engine.alarm_acknowledged
                         )
                         arduino = get_arduino()
                         arduino.update(result)
                         result["co2_ppm"] = arduino.co2_ppm
                         result["arduino_responding"] = arduino.responding
-                        if result["alert_event"]:
-                            asyncio.run_coroutine_threadsafe(
-                                _save_log_to_db(
-                                    user_id=self._user_id, session_id=self.session_id,
-                                    ear_value=result["ear_value"], pred_score=result["pred_score"],
-                                    drowsy_level=result["drowsy_level"],
-                                ),
-                                self._loop,
-                            )
                         self._put_result(result)
         except Exception as error:
             with self._state_lock:
                 if self._running:
                     logger.exception("Detection session failed: session=%d", self.session_id)
-                    self._put_result({**model_runtime_info(), "state": "ERROR", "error": str(error)})
+                    self._put_result({
+                        **model_runtime_info(), "state": "ERROR", "error": str(error)
+                    })
         finally:
-            with self._state_lock:
-                self._running = False
-            # 감지가 멈춰도 아두이노 경보는 유지한다. 앱 중지 확인이나 stop()에서만 끈다.
+            try:
+                recorder.finish()
+                self._flush_journal_records()
+            finally:
+                with self._state_lock:
+                    self._running = False
+            # 오류 종료 시 기존 장치 경보를 유지한다.
+            # 명시적 stop() 또는 현재 위험의 중지 확인에서만 해제한다.
 
 
 # ── 활성 세션 관리 (카메라 1대 → 세션 1개) ──
@@ -911,13 +1010,15 @@ _active_session: DetectionSession | None = None
 
 
 def start_detection(
-    session_id: int, user_id: int, loop: asyncio.AbstractEventLoop
+    session_id: int, user_id: int, loop: asyncio.AbstractEventLoop, account_key=None
 ) -> DetectionSession:
     """감지 시작."""
     global _active_session
-    if _active_session and (_active_session.is_running or _active_session.thread_alive):
+    if _active_session and (
+        _active_session.is_running or _active_session.thread_alive
+    ):
         raise RuntimeError("이미 감지가 실행 중이거나 이전 카메라를 정리 중입니다")
-    _active_session = DetectionSession(session_id, user_id, loop)
+    _active_session = DetectionSession(session_id, user_id, loop, account_key)
     _active_session.start()
     return _active_session
 

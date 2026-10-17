@@ -3,6 +3,7 @@
 
 # Database
 *.db
+data/record-journal-*.sqlite3*
 
 # Python
 __pycache__/

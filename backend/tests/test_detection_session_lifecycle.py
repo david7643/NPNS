@@ -60,7 +60,9 @@ class DetectionLifecycleTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(detection, "CameraDetector", Camera), \
              patch.object(detection, "get_arduino", return_value=bridge), \
              patch.object(detection, "_active_session", session), \
-             patch.object(session, "_put_result", side_effect=record):
+             patch.object(session, "_put_result", side_effect=record), \
+             patch.object(session, "_write_record"), \
+             patch.object(session, "_flush_journal_records"):
             session.start()
             worker = session._thread
             try:

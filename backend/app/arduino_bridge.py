@@ -103,12 +103,16 @@ class ArduinoBridge:
 
     def status(self) -> dict:
         now = self._clock()
+        co2 = self._co2  # 값과 수신 시각은 같은 측정 스냅샷에서 읽는다.
+        age = max(0.0, now - co2[1]) if co2 else None
+        fresh = age is not None and age <= CO2_STALE_SECONDS
         return {
             "arduino_enabled": self.enabled,
             "arduino_connected": self.connected,
             "arduino_responding": self.responding_at(now),
             "arduino_alarm_on": self._device_alarm if self.responding_at(now) else None,
-            "co2_ppm": self.co2_ppm_at(now),
+            "co2_ppm": co2[0] if fresh else None,
+            "co2_age_seconds": age if fresh else None,
         }
 
     # ── 감지 스레드용 (입출력 없음) ──

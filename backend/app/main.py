@@ -1,6 +1,7 @@
 """DrowsyGuard 백엔드 서버 메인 엔트리포인트."""
 
 from contextlib import asynccontextmanager
+import asyncio
 from pathlib import Path
 import sys
 
@@ -21,20 +22,31 @@ from app.detection_service import (
     model_runtime_info,
     stop_detection,
 )
-from app.routers import auth, contacts, detection, report, sessions
+from app.routers import auth, contacts, detection, devices, report, sessions
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """서버 시작 시 DB 테이블 생성 및 AI 모델 로드."""
+    """DB·모델·기록 저장 작업·아두이노의 시작과 종료를 관리한다."""
     await init_db()
-    load_models()
-    start_arduino()
+    from app.record_journal import get_journal, run_writer
+
+    get_journal()
+    writer_stop = asyncio.Event()
+    writer = asyncio.create_task(run_writer(writer_stop))
     try:
+        load_models()
+        start_arduino()
         yield
     finally:
-        stop_detection()
-        get_arduino().close()
+        try:
+            await asyncio.to_thread(stop_detection)
+        finally:
+            try:
+                await asyncio.to_thread(get_arduino().close)
+            finally:
+                writer_stop.set()
+                await writer
 
 
 app = FastAPI(
@@ -49,6 +61,7 @@ app.include_router(sessions.router)
 app.include_router(detection.router)
 app.include_router(report.router)
 app.include_router(contacts.router)
+app.include_router(devices.router)
 
 
 @app.get("/health")
@@ -65,6 +78,7 @@ async def health_check():
         **get_arduino().status(),
         "detection_active": bool(active and active.is_running),
         "active_session_id": active.session_id if active and active.is_running else None,
+        "record_storage_error": active.latest_result.get("storage_error") if active and active.latest_result else None,
     }
 
 

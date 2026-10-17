@@ -390,7 +390,9 @@ class DetectionSessionAlarmPolicyTests(unittest.IsolatedAsyncioTestCase):
                     raise error
 
         with patch.object(detection_service, "CameraDetector", FakeDetector), \
-             patch.object(detection_service, "get_arduino", return_value=bridge):
+             patch.object(detection_service, "get_arduino", return_value=bridge), \
+             patch.object(session, "_write_record"), \
+             patch.object(session, "_flush_journal_records"):
             session._running = True
             await asyncio.to_thread(session._detection_loop)
             return bridge, session, detection_service

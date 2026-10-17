@@ -1,8 +1,9 @@
 """DrowsyGuard Pydantic 스키마 정의."""
 
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import AwareDatetime, BaseModel, Field, model_validator
 
 
 # ── Auth 관련 스키마 ──
@@ -78,6 +79,7 @@ class SessionResponse(BaseModel):
     user_id: int
     started_at: datetime
     ended_at: datetime | None
+    distance_meters: float = 0.0
 
     model_config = {"from_attributes": True}
 
@@ -86,6 +88,31 @@ class SessionEndRequest(BaseModel):
     """세션 종료 요청."""
 
     session_id: int
+
+
+class SessionDistanceUpdate(BaseModel):
+    distance_meters: float = Field(ge=0, le=100_000_000, allow_inf_nan=False)
+
+
+class EventLocationUpdate(BaseModel):
+    session_id: int = Field(gt=0)
+    received_at: AwareDatetime
+    latitude: float | None = Field(None, ge=-90, le=90, allow_inf_nan=False)
+    longitude: float | None = Field(None, ge=-180, le=180, allow_inf_nan=False)
+    measured_at: AwareDatetime | None = None
+    accuracy_meters: float | None = Field(None, ge=0, allow_inf_nan=False)
+    location_status: Literal["available", "permission_denied", "services_disabled", "stale", "inaccurate", "no_fix"]
+
+    @model_validator(mode="after")
+    def validate_location(self):
+        if self.location_status == "available":
+            if any(value is None for value in (self.latitude, self.longitude, self.measured_at, self.accuracy_meters)):
+                raise ValueError("위치에는 좌표·측정 시각·정확도가 필요합니다")
+            if self.accuracy_meters > 100 or not 0 <= (self.received_at - self.measured_at).total_seconds() <= 30:
+                raise ValueError("수신 당시 유효한 위치만 연결할 수 있습니다")
+        elif self.latitude is not None or self.longitude is not None:
+            raise ValueError("유효하지 않은 위치 상태에 좌표를 넣을 수 없습니다")
+        return self
 
 
 # ── Detection 관련 스키마 ──
@@ -122,6 +149,14 @@ class DetectionStartRequest(BaseModel):
     """감지 시작/종료 요청."""
 
     session_id: int
+
+
+class AlarmAcknowledgeRequest(DetectionStartRequest):
+    risk_id: str | None = Field(None, max_length=36)
+
+
+class SmsSettingsUpdate(BaseModel):
+    enabled: bool
 
 
 class DetectionStartResponse(BaseModel):
@@ -163,9 +198,26 @@ class DrowsyEventItem(BaseModel):
     drowsy_level: int
     latitude: float | None
     longitude: float | None
+    event_id: str | None = None
+    app_received_at: datetime | None = None
+    location_measured_at: datetime | None = None
+    location_accuracy_meters: float | None = None
+    location_status: str | None = None
 
 
-class ReportSummaryResponse(BaseModel):
+class ObservationMetrics(BaseModel):
+    independent_event_count: int | None = None
+    valid_observation_seconds: float = 0.0
+    unavailable_observation_seconds: float = 0.0
+    risk_observation_seconds: float = 0.0
+    observed_seconds: float = 0.0
+    observation_coverage: float | None = None
+    independent_events_per_hour: float | None = None
+    assessment_status: str = "no_valid_observation"
+    episode_peak_level: int = 0
+
+
+class ReportSummaryResponse(ObservationMetrics):
     """리포트 요약 응답."""
 
     session_id: int
@@ -181,9 +233,10 @@ class ReportSummaryResponse(BaseModel):
     most_dangerous_time: str | None
     chart_data: list[ChartDataItem]
     events: list[DrowsyEventItem]
+    distance_meters: float = 0.0
 
 
-class ReportHistoryItem(BaseModel):
+class ReportHistoryItem(ObservationMetrics):
     """히스토리 목록의 세션 항목."""
 
     session_id: int
@@ -193,6 +246,7 @@ class ReportHistoryItem(BaseModel):
     safety_score: int
     grade: str
     total_drowsy_count: int
+    distance_meters: float = 0.0
 
 
 class ReportHistoryResponse(BaseModel):
@@ -202,7 +256,7 @@ class ReportHistoryResponse(BaseModel):
     sessions: list[ReportHistoryItem]
 
 
-class ReportByDateResponse(BaseModel):
+class ReportByDateResponse(ObservationMetrics):
     """특정 날짜 리포트 응답 (해당 날짜의 모든 세션 합산)."""
 
     date: str
@@ -218,7 +272,7 @@ class ReportByDateResponse(BaseModel):
     events: list[DrowsyEventItem]
 
 
-class ReportDetailResponse(BaseModel):
+class ReportDetailResponse(ObservationMetrics):
     """세션 상세 리포트 응답."""
 
     session_id: int
@@ -234,6 +288,7 @@ class ReportDetailResponse(BaseModel):
     most_dangerous_time: str | None
     chart_data: list[ChartDataItem]
     events: list[DrowsyEventItem]
+    distance_meters: float = 0.0
 
 
 # ── Contact 관련 스키마 ──

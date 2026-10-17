@@ -29,7 +29,7 @@ WS_URL = "ws://localhost:8000"
 REQUEST_TIMEOUT_SECONDS = 10
 DISPLAY_INTERVAL_SECONDS = 0.5
 RAW_DROWSY_THRESHOLD = 0.5
-EXPECTED_DETECTION_CODE_VERSION = "event-risk-v6"
+EXPECTED_DETECTION_CODE_VERSION = "event-risk-v7"
 
 TEST_USER = {
     "username": "testdriver",
@@ -576,12 +576,13 @@ async def listen_detection_websocket(token, session_id, recorder):
     ws_uri = f"{WS_URL}/detection/ws/{session_id}"
     print(f"🔄 4. 인증된 WebSocket 연결 시도: {ws_uri}")
     stop_event = asyncio.Event()
+    latest_risk_id = None
     async def acknowledge_alarm():
         try:
             response = await asyncio.to_thread(
                 requests.post, f"{BASE_URL}/detection/alarm/acknowledge",
                 headers={"Authorization": f"Bearer {token}"},
-                json={"session_id": session_id}, timeout=10,
+                json={"session_id": session_id, "risk_id": latest_risk_id}, timeout=10,
             )
             if response.status_code == 202:
                 print("\n✅ 경보 중지 확인 접수 — 눈을 뜨고 정상 상태를 10초 유지하세요.")
@@ -629,6 +630,7 @@ async def listen_detection_websocket(token, session_id, recorder):
                     )
                     runtime_announced = True
 
+                latest_risk_id = data.get("risk_id")
                 recorder.record(data)
                 now = time.monotonic()
                 state = data.get("state")

@@ -4,6 +4,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
+from pydantic import field_validator
+from sqlalchemy.engine import make_url
 
 
 class Settings(BaseSettings):
@@ -19,6 +21,17 @@ class Settings(BaseSettings):
     # 아두이노 경보기 포트 (예: COM3, /dev/ttyACM0). 비워두면 사용하지 않는다.
     ARDUINO_PORT: str | None = None
     ARDUINO_BAUD: int = 9600
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def resolve_sqlite_database(cls, value):
+        url = make_url(value)
+        if url.drivername.startswith("sqlite") and url.database not in (None, "", ":memory:"):
+            path = Path(url.database)
+            if not path.is_absolute():
+                path = Path(__file__).resolve().parents[1] / path
+            return url.set(database=path.resolve().as_posix()).render_as_string(hide_password=False)
+        return value
 
     model_config = {"env_file": str(Path(__file__).resolve().parents[1] / ".env")}
 

@@ -118,7 +118,7 @@ async def delete_me(
     db: AsyncSession = Depends(get_db),
 ):
     """현재 로그인된 계정 탈퇴 및 관련 데이터 전체 삭제."""
-    from app.models import Contact, DetectionLog, DrivingSession, LoginSession
+    from app.models import Contact, DetectionLog, DrivingSession, LoginSession, DrowsinessEpisode, ObservationSegment
 
     active_detection = get_active_session()
     if (
@@ -133,6 +133,8 @@ async def delete_me(
 
     # 관련된 데이터 (로그, 세션, 연락처) 모두 삭제
     await db.execute(delete(DetectionLog).where(DetectionLog.user_id == current_user.id))
+    await db.execute(delete(DrowsinessEpisode).where(DrowsinessEpisode.user_id == current_user.id))
+    await db.execute(delete(ObservationSegment).where(ObservationSegment.user_id == current_user.id))
     await db.execute(delete(DrivingSession).where(DrivingSession.user_id == current_user.id))
     await db.execute(delete(Contact).where(Contact.user_id == current_user.id))
     await db.execute(delete(LoginSession).where(LoginSession.user_id == current_user.id))
