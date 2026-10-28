@@ -28,6 +28,9 @@ backend/ai_models/candidates/
 !backend/ai_models/released/personal-ear-v1/best_drowsy_model.keras
 !backend/ai_models/released/personal-ear-v1/ear_scaler.pkl
 
+# Image Dataset (too large for git, ~23GB)
+model_training/image_dataset/
+
 # OS
 .DS_Store
 Thumbs.db
