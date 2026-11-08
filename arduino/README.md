@@ -1,12 +1,62 @@
 # DrowsyGuard 아두이노 경보기
 
 서버 PC(웹캠이 연결된 컴퓨터)에 USB로 연결한다. 서버가 2·3단계 졸음 경보를 켜고 끄며,
-아두이노는 CO₂ 농도로 창문(서보)을 스스로 연다.
+아두이노는 CO₂ 측정값을 서버로 전송한다. 서보 제어는 사용하지 않는다.
 
 - 스케치: `drowsyguard_alarm/drowsyguard_alarm.ino`
-- 보드: Arduino Uno (ATmega328P, 5V). 필요한 라이브러리 `Servo`, `SoftwareSerial`은 IDE 기본 포함.
-- 아두이노 IDE는 업로드할 때만 필요하다. 서버 PC에는 USB 드라이버만 있으면 된다
+- 보드: Arduino Uno (ATmega328P, 5V). `SoftwareSerial`은 AVR 코어에 포함된다.
+- 펌웨어 업로드에는 Arduino IDE 또는 Arduino CLI가 필요하다. 서버에는 Python의 `pyserial`과 USB 포트 접근 권한이 필요하다
   (장치 관리자에 COM 포트가 안 보이면 호환 보드의 CH340 드라이버 설치).
+
+## 이 노트북에서 사용하기 (Arch Linux)
+
+프로젝트 루트에서 실행한다. Arduino CLI와 보드 패키지는 Git에서 제외한
+`.local/arduino/`에 설치되어 있으며, `cli.sh`가 해당 경로를 사용한다.
+GUI IDE 없이 컴파일과 업로드가 가능하다.
+
+1. 최초 한 번 일반 터미널에서 USB 시리얼 접근 그룹을 추가하고 로그아웃 후 다시 로그인한다.
+   관리자 암호가 필요하다.
+
+   ```bash
+   sudo usermod -aG uucp david
+   ```
+
+2. USB 데이터 케이블로 Uno를 연결하고 포트를 확인한다.
+
+   ```bash
+   bash arduino/cli.sh board list
+   ls -l /dev/serial/by-id/
+   ```
+
+   호환 보드는 보드 이름이 Unknown이어도 포트가 표시될 수 있다.
+   가능하면 재연결 시에도 유지되는 `/dev/serial/by-id/...` 경로를 사용한다.
+
+3. 서버와 시리얼 모니터를 종료하고 펌웨어를 업로드한다.
+   아래 `/dev/ttyACM0`은 실제 연결된 보드 포트로 바꾼다.
+
+   ```bash
+   bash arduino/cli.sh compile --fqbn arduino:avr:uno --build-path "$PWD/.local/arduino/build" arduino/drowsyguard_alarm
+   bash arduino/cli.sh upload --fqbn arduino:avr:uno --port /dev/ttyACM0 --input-dir "$PWD/.local/arduino/build" arduino/drowsyguard_alarm
+   ```
+
+4. `backend/.env`에 실제 포트를 설정하고 백엔드를 다시 시작한다.
+   파일이 없으면 생성하고, 이미 있으면 기존 설정을 유지하며 아래 항목을 수정한다.
+
+   ```dotenv
+   ARDUINO_PORT=/dev/ttyACM0
+   ARDUINO_BAUD=9600
+   ```
+
+5. `/health` 또는 `/devices/telemetry`에서 `arduino_connected=true`와
+   `arduino_responding=true`를 확인한다. 실제 부저·센서 검증은 아래 확인 방법을 따른다.
+
+도구를 다시 설치할 때는 공식 Linux x86-64 Arduino CLI 실행 파일을
+`.local/arduino/bin/arduino-cli`에 둔 뒤 다음 명령을 실행한다.
+
+```bash
+bash arduino/cli.sh core update-index
+bash arduino/cli.sh core install arduino:avr@1.8.8
+```
 
 ## 배선
 
@@ -14,7 +64,6 @@
 |---|---|---|---|
 | 청색 LED | 긴 다리(+) | D7 | 짧은 다리(−) → 220Ω 저항 → GND |
 | 부저 | + | D8 | − → GND |
-| 서보 SG90 | 주황(신호) | D9 | 빨강 → 5V, 갈색 → GND |
 | CO₂ 센서 MH-Z19E | TX | D10 | 아두이노 수신 핀 (교차 연결) |
 | | RX | D11 | 아두이노 송신 핀 |
 | | Vin | 5V | |
@@ -22,10 +71,6 @@
 
 전원과 접지
 - 모든 부품의 GND는 아두이노 GND와 같은 줄(공통 접지)에 연결한다.
-- USB 5V로 시연할 수 있다. 서보가 움직일 때 아두이노가 재부팅되면(시리얼에 `BOOT`가 다시 찍힘)
-  서보만 외부 5V로 옮기고, 외부 전원의 GND를 아두이노 GND와 반드시 연결한다.
-- 서보 각도(0°·180°)와 이동 시간(800ms)은 실제 창문 모형의 허용 범위에서 확인한 뒤
-  스케치 위쪽 상수로 조정한다.
 
 ## 동작 규칙
 
@@ -36,9 +81,7 @@
 | 카메라·추론이 멈춤 (서버는 동작) | 마지막 상태 유지. 서버가 1초마다 같은 명령을 다시 보냄 |
 | 서버 프로세스·USB 통신 단절 | 아두이노가 마지막 상태 유지. 경보 중이면 계속 울림 |
 | 아두이노 재부팅 | 경보 꺼진 상태로 시작, `BOOT` 전송 → 서버가 현재 상태를 바로 다시 보냄 |
-| 새 CO₂ ≥ 2000ppm | 창문 열기 (서버와 무관) |
-| 새 CO₂ < 1000ppm | 창문 닫기 |
-| CO₂ 응답 없음·오류값 10초 이상 | `CO2:NA` 전송, 창문은 현재 위치 유지 |
+| CO₂ 응답 없음·오류값 10초 이상 | `CO2:NA` 전송, 측정값 없음으로 표시 |
 
 감지 정지 중에도 경보를 유지하는 이유: 졸음 경보 도중 카메라가 멈췄다고 경보가 꺼지면 안 된다.
 경보는 앱의 중지 버튼(`POST /detection/alarm/acknowledge`)이나 감지 종료(`POST /detection/stop`)로 끈다.
@@ -77,5 +120,5 @@ ACK는 명령을 받아 처리했다는 뜻이다. 부저가 실제로 소리를
 ## 테스트
 
 - 호스트 테스트(보드 불필요): `bash arduino/test/run.sh`
-  명령 처리, 경보 유지, 잘못된 명령 거부, CO₂ 유효성·만료, 창문 규칙, millis 랩어라운드를 검사한다.
-- 실제 보드에서 따로 확인할 것: USB 단절·재연결, 서보 개폐와 전원, 센서 단절 시 `CO2:NA`.
+  명령 처리, 경보 유지, 잘못된 명령 거부, CO₂ 유효성·만료, millis 랩어라운드를 검사한다.
+- 실제 보드에서 따로 확인할 것: USB 단절·재연결, 센서 단절 시 `CO2:NA`.

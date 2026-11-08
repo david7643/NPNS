@@ -34,10 +34,8 @@ static void boot(uint32_t start_ms = 0) {
   for (int &p : sim::pins) p = 0;
   Serial.rx.clear(); Serial.tx.clear();
   co2Serial.rx.clear(); co2Serial.requests = 0;
-  windowServo = Servo();
-  co2ppm = 0; co2Fresh = false; lastValidCo2 = start_ms; lastRequest = start_ms;
+  co2ppm = 0; lastValidCo2 = start_ms; lastRequest = start_ms;
   alarmOn = false; ledState = false; lastBlink = start_ms;
-  windowOpen = false; servoMoving = false; servoMovedAt = start_ms;
   cmdLen = 0; cmdOverflow = false;
   setup();
 }
@@ -68,10 +66,9 @@ static void sensor_reply(int ppm) {
 }
 
 static void test_boot_message() {
-  std::puts("boot prints BOOT and closes window");
+  std::puts("boot prints BOOT");
   boot();
   CHECK(has("BOOT"));
-  CHECK(windowServo.angle == WINDOW_CLOSED_ANGLE);
 }
 
 static void test_a1_stays_on_when_clock_ticks_during_command() {
@@ -131,19 +128,14 @@ static void test_crlf_and_blank_lines() {
   CHECK(!has("ERR:CMD"));
 }
 
-static void test_valid_co2_opens_window_and_reports() {
-  std::puts("valid CO2 above threshold opens window, servo detaches after move");
+static void test_valid_co2_reports() {
+  std::puts("valid CO2 is reported");
   boot();
   run_for(CO2_REQUEST_MS + 10);
   CHECK(co2Serial.requests >= 1);
   sensor_reply(2500);
   run_for(20);
   CHECK(has("CO2:2500"));
-  CHECK(windowOpen);
-  CHECK(windowServo.angle == WINDOW_OPEN_ANGLE);
-  CHECK(windowServo.attached);
-  run_for(SERVO_MOVE_MS + 20);
-  CHECK(!windowServo.attached);
 }
 
 static void test_out_of_range_co2_ignored() {
@@ -156,36 +148,17 @@ static void test_out_of_range_co2_ignored() {
   for (byte b : {0xFF, 0x86, 0x09, 0xC4, 0, 0, 0, 0, 0x00}) co2Serial.rx.push_back(b);  // 체크섬 오류
   run_for(20);
   CHECK(co2ppm == 0);
-  CHECK(!windowOpen);
   CHECK(Serial.tx.find("CO2:") == std::string::npos);
 }
 
-static void test_stale_co2_reports_na_and_holds_window() {
-  std::puts("CO2 expires after 10 s: reports CO2:NA and window holds position");
+static void test_stale_co2_reports_na() {
+  std::puts("CO2 expires after 10 s: reports CO2:NA");
   boot();
   sensor_reply(2500);
   run_for(20);
-  CHECK(windowOpen);
-  int writes = windowServo.writes;
   run_for(CO2_STALE_MS + 100);
   CHECK(has("CO2:NA"));
   CHECK(co2ppm == 0);
-  CHECK(windowOpen);
-  CHECK(windowServo.writes == writes);
-}
-
-static void test_window_closes_below_threshold() {
-  std::puts("window closes only when a fresh reading is below the close threshold");
-  boot();
-  sensor_reply(2500);
-  run_for(20);
-  sensor_reply(1500);
-  run_for(20);
-  CHECK(windowOpen);
-  sensor_reply(900);
-  run_for(20);
-  CHECK(!windowOpen);
-  CHECK(windowServo.angle == WINDOW_CLOSED_ANGLE);
 }
 
 static void test_millis_wraparound() {
@@ -201,9 +174,6 @@ static void test_millis_wraparound() {
   CHECK(co2Serial.requests >= 1);
   sensor_reply(2500);
   run_for(20);
-  CHECK(windowOpen);
-  run_for(SERVO_MOVE_MS + 20);
-  CHECK(!windowServo.attached);
 }
 
 int main() {
@@ -213,10 +183,9 @@ int main() {
   test_led_blinks_while_alarm_on();
   test_invalid_commands_rejected_without_state_change();
   test_crlf_and_blank_lines();
-  test_valid_co2_opens_window_and_reports();
+  test_valid_co2_reports();
   test_out_of_range_co2_ignored();
-  test_stale_co2_reports_na_and_holds_window();
-  test_window_closes_below_threshold();
+  test_stale_co2_reports_na();
   test_millis_wraparound();
   if (failures) { std::printf("%d check(s) failed\n", failures); return 1; }
   std::puts("ALL FIRMWARE TESTS PASSED");
